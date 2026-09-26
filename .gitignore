@@ -1,0 +1,5 @@
+# Machine state lives in ~/.local/state/omarchy-overlay, never here. Both rules
+# are anchored: an unanchored directory name also matches nested paths, which
+# silently keeps files out of the repo.
+/local/
+*.bak.*

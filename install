@@ -1,0 +1,126 @@
+#!/bin/bash
+#
+# Apply this overlay to the machine.
+#
+#   ./install                 everything
+#   ./install --dry-run       show what would change; no sudo, no writes
+#   ./install <module>        one module
+#   ./install --list          what is available
+#   ./install --no-packages   report missing packages instead of installing them
+#
+# Files under a module's home/ are SYMLINKED into $HOME, so editing the live
+# file edits the repo. Files under system/ are COPIED to / as root — never
+# symlinked, because this repo is user-writable and root must not read policy,
+# or execute sudo'd scripts, from a path the user can rewrite.
+#
+# Existing files are backed up as <file>.bak.<epoch> before being replaced, and
+# the backup is removed again if the content turned out to be identical.
+
+set -uo pipefail
+
+REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# Exported so modules, toggle scripts and anything they call locate the overlay
+# without hardcoding a path. shell/env.sh derives the same value for shells.
+export OMARCHY_OVERLAY_DIR=$REPO
+MODULES_DIR="$REPO/modules"
+DRY=0
+SKIP_PACKAGES=0
+declare -a WANTED=()
+
+while (($#)); do
+  case $1 in
+    --dry-run) DRY=1 ;;
+    --no-packages) SKIP_PACKAGES=1 ;;
+    --list)
+      for m in "$MODULES_DIR"/*/; do
+        name=$(basename "$m")
+        desc=$(sed -n 's/^# *desc: *//p' "$m/module.sh" 2>/dev/null | head -1)
+        printf '  %-18s %s\n' "$name" "${desc:-}"
+      done
+      exit 0
+      ;;
+    -h | --help)
+      # Print the header comment, stopping at the first line that is not one.
+      # A fixed line range drifts silently as the header grows.
+      awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' \
+        "${BASH_SOURCE[0]}"
+      exit 0
+      ;;
+    -*) echo "unknown option: $1" >&2; exit 1 ;;
+    *) WANTED+=("$1") ;;
+  esac
+  shift
+done
+
+export DRY SKIP_PACKAGES
+# shellcheck source=lib/common.sh
+source "$REPO/lib/common.sh"
+
+command -v omarchy >/dev/null || { echo "this repo targets Omarchy" >&2; exit 1; }
+
+# One sudo session up front, so no module stops midway for a password.
+#
+# Not having it is not fatal: most of a run is user-level symlinks, and demanding
+# root to create those would be wrong. System steps then report what they could
+# not do instead of prompting from somewhere a password cannot be typed.
+HAVE_SUDO=0
+if ((!DRY)); then
+  if sudo -n true 2>/dev/null; then
+    HAVE_SUDO=1
+  elif [[ -t 0 ]] && sudo -v; then
+    HAVE_SUDO=1
+  else
+    echo "  note: no sudo session — system files will be reported, not changed." >&2
+    echo "        re-run from a terminal to apply those." >&2
+  fi
+  if ((HAVE_SUDO)); then
+    # Keep it warm: an initramfs rebuild can outlast the default 5m timestamp.
+    while true; do sudo -n true; sleep 60; kill -0 "$$" 2>/dev/null || exit; done &
+    SUDO_KEEPALIVE=$!
+    trap 'kill "$SUDO_KEEPALIVE" 2>/dev/null' EXIT
+  fi
+fi
+export HAVE_SUDO
+
+((DRY)) || mkdir -p "$STATE_DIR"
+
+if ((${#WANTED[@]} == 0)); then
+  mapfile -t WANTED < <(cd "$MODULES_DIR" && ls -d */ | tr -d /)
+fi
+
+for name in "${WANTED[@]}"; do
+  mod="$MODULES_DIR/$name"
+  if [[ ! -d $mod ]]; then
+    echo "no such module: $name (try --list)" >&2
+    FAILED=1
+    continue
+  fi
+
+  desc=$(sed -n 's/^# *desc: *//p' "$mod/module.sh" 2>/dev/null | head -1)
+  section "$name${desc:+ — $desc}"
+
+  MODULE_DIR=$mod
+  export MODULE_DIR
+
+  # Declarative package list, applied before the module's own logic so it can
+  # rely on what it declared. See lib/common.sh for the file format.
+  install_packages_file "$mod/packages"
+  # shellcheck source=/dev/null
+  source "$mod/module.sh"
+done
+
+section "Result"
+
+if ((FAILED)); then
+  echo "  Something failed above. Fix it, then re-run."
+  exit 1
+fi
+if ((DRY)); then
+  echo "  Dry run — nothing was changed."
+  exit 0
+fi
+if ((CHANGED)); then
+  echo "  Changes applied."
+else
+  echo "  Already up to date."
+fi

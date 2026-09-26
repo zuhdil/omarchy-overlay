@@ -1,0 +1,59 @@
+#!/bin/bash
+#
+# Switch what `docker` and `docker compose` talk to, by repointing one symlink.
+#
+#   toggle-container-engine            # flip podman <-> docker
+#   toggle-container-engine podman     # select explicitly
+#   toggle-container-engine --status
+#
+# The selection is machine state, not repo content: which engine a given box
+# runs is a local choice, the same way its swapfile offset is. The repo ships
+# the options; this link records the pick and is never committed.
+#
+# Takes effect in new shells; `source ~/.bashrc` to update the current one.
+
+set -euo pipefail
+
+REPO=${OMARCHY_OVERLAY_DIR:-$HOME/.config/omarchy-overlay}
+ENGINES="$REPO/modules/container-engine/engines"
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-overlay"
+LINK="$STATE/container-engine.sh"
+
+current() {
+  [[ -L $LINK ]] || { echo "none"; return; }
+  basename "$(readlink -f -- "$LINK")" .sh
+}
+
+case ${1:-toggle} in
+  --status | -s)
+    echo "engine:      $(current)"
+    echo "DOCKER_HOST: ${DOCKER_HOST:-<unset>}"
+    exit 0
+    ;;
+  toggle) [[ $(current) == podman ]] && want=docker || want=podman ;;
+  podman | docker) want=$1 ;;
+  *) echo "usage: ${0##*/} [podman|docker|--status]" >&2; exit 1 ;;
+esac
+
+target="$ENGINES/$want.sh"
+[[ -r $target ]] || { echo "no such engine: $want ($target)" >&2; exit 1; }
+
+case $want in
+  podman)
+    command -v podman >/dev/null || { echo "podman is not installed" >&2; exit 1; }
+    ;;
+  docker)
+    # Compose against Podman needs only podman + docker-compose, so the docker
+    # CLI may legitimately be absent. Say so rather than selecting a dead state.
+    command -v docker >/dev/null || {
+      echo "the docker CLI is not installed — this side needs the 'docker' package" >&2
+      echo "(compose against podman needs only: podman, docker-compose)" >&2
+      exit 1
+    }
+    ;;
+esac
+
+mkdir -p -- "$STATE"
+ln -sfn -- "$target" "$LINK"
+echo "container engine: $(current)"
+echo "open a new shell, or: source ~/.bashrc"

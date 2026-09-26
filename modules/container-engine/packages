@@ -1,0 +1,28 @@
+# Running a docker-compose.yml needs two things, and the `docker` package is
+# not one of them:
+#
+#   podman          the engine, and the API socket it serves
+#   docker-compose  the Compose implementation. A standalone Go binary with no
+#                   dependencies; it speaks the Docker API over $DOCKER_HOST.
+#                   Podman's socket implements that API, so Compose cannot tell
+#                   the difference — verified by running a real project against
+#                   it with no Docker daemon present.
+#
+# Deliberately NOT listed:
+#
+#   docker          only needed if you want to toggle to a real Docker daemon,
+#                   or to use `docker compose` (with a space) — that form is the
+#                   docker CLI invoking a plugin, so it needs this package.
+#                   `docker-compose` (hyphenated) works standalone.
+#   docker-buildx   BuildKit, which podman's API emulation does not serve. The
+#                   podman engine file sets DOCKER_BUILDKIT=0 for that reason,
+#                   so buildx only earns its keep on the real-Docker side.
+#   podman-compose  an independent Python reimplementation that shells out to
+#                   the podman CLI rather than using the API. It groups services
+#                   into a pod, so they share a network namespace and reach each
+#                   other on localhost instead of by service name — compose files
+#                   can behave differently under it. docker-compose is the
+#                   reference implementation; prefer it.
+
+podman
+docker-compose
