@@ -90,7 +90,7 @@ else
       ok "SSH key already on GitHub ($(basename "$ssh_pub"))"
     elif dry; then
       changed "would upload $ssh_pub to GitHub"
-    elif gh ssh-key add "$ssh_pub" --title "$(hostname)" >/dev/null 2>&1; then
+    elif gh ssh-key add "$ssh_pub" --title "${HOSTNAME:-$(uname -n)}" >/dev/null 2>&1; then
       changed "uploaded $ssh_pub to GitHub"
     else
       warn "could not upload $ssh_pub"
