@@ -11,7 +11,7 @@
 #
 # Exit: 0 = all good, 1 = at least one FAIL.
 #
-# See omarchy-hibernation-setup.md for what each check corresponds to.
+# See the module's docs/hibernation.md for what each check corresponds to.
 
 pass_n=0 fail_n=0 warn_n=0 skip_n=0
 
@@ -266,11 +266,25 @@ else
   else
     as_root "cat '$boot_img' > '$img'"
   fi
+  extracted=0
+  [[ -s $img ]] && extracted=1
+  listing=""
+  ((extracted)) && listing=$(as_root "lsinitcpio '$img'")
+  # Root may have recreated it, and /tmp is sticky, so try as root first.
+  as_root "rm -f '$img'"
+  rm -f "$img" 2>/dev/null
 
-  if [[ ! -s $img ]]; then
+  # The guard above only proves root was there a moment ago. Re-ask before
+  # calling an empty result a defect: every branch below reads as "hibernation
+  # is broken", and the post-update hook turns that into a critical
+  # notification. Crying wolf gets the check ignored.
+  if [[ -z $listing ]] && ! as_root true; then
+    skip "initramfs image contents (root access lapsed mid-check — re-run with sudo)"
+  elif ((!extracted)); then
     fail "could not read the initramfs from $boot_img"
+  elif [[ -z $listing ]]; then
+    fail "lsinitcpio produced no listing for $boot_img"
   else
-    listing=$(as_root "lsinitcpio '$img'")
     if grep -qx 'hooks/resume' <<<"$listing"; then
       pass "resume hook present in the built image ($boot_img)"
     else
@@ -299,13 +313,14 @@ else
       if as_root "grep -rqs 'blacklist nouveau' /usr/lib/modprobe.d /etc/modprobe.d" &&
         grep -q 'modprobe.d' <<<"$listing"; then
         pass "nouveau present but blacklisted, and the blacklist is bundled"
+      elif ! as_root true; then
+        skip "nouveau blacklist (root access lapsed — re-run with sudo)"
       else
         fail "nouveau is in the initramfs without a bundled blacklist" \
           "it may bind the dGPU early and break resume"
       fi
     fi
   fi
-  rm -f "$img"
 fi
 
 section "Sleep services and triggers"
@@ -397,7 +412,8 @@ printf '\n%s=== %d passed, %d failed, %d warnings, %d skipped ===%s\n' \
   "$B" "$pass_n" "$fail_n" "$warn_n" "$skip_n" "$N"
 
 if ((fail_n > 0)); then
-  printf '%sHibernation is likely broken. See omarchy-hibernation-setup.md.%s\n' "$R" "$N"
+  printf '%sHibernation is likely broken. See %s/modules/hibernation/docs/hibernation.md%s\n' \
+    "$R" "${OMARCHY_OVERLAY_DIR:-$USER_HOME/.config/omarchy-overlay}" "$N"
   exit 1
 fi
 printf '%sConfiguration looks correct. Confirm with a real cycle:%s\n' "$G" "$N"
