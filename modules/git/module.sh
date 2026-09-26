@@ -94,13 +94,32 @@ else
     /^sec:/ { usable = ($2 !~ /^[erdi]$/) && ($12 ~ /S/); next }
     /^fpr:/ && usable { print $10; exit }
   ')
-  if [[ -z $fpr ]]; then
-    warn "no usable GPG signing key for $email"
-    note "create one with: gpg --full-generate-key  (ed25519 is a good default)"
+  # Generate one rather than explaining how to. Signing is enabled just above,
+  # so a machine without a key cannot commit at all — printing instructions
+  # leaves the module having broken git rather than configured it. pinentry
+  # prompts for the passphrase, so this needs a terminal; a key is an identity
+  # and should not be created silently or without one.
+  if [[ -z $fpr ]] && dry; then
+    changed "would generate an ed25519 signing key for $email"
+  elif [[ -z $fpr ]] && [[ ! -t 0 ]]; then
+    warn "no usable GPG signing key for $email, and no terminal to create one"
+    note "run: gpg --quick-generate-key \"$email\" ed25519 sign 2y"
     note "signing is enabled, so commits will fail until a key exists"
-  else
-    git_set user.signingkey "$fpr"
+  elif [[ -z $fpr ]]; then
+    name=$(git config --get user.name 2>/dev/null) || name=
+    note "no GPG signing key for $email — generating one (pinentry will ask for a passphrase)"
+    if gpg --quick-generate-key "${name:+$name }<$email>" ed25519 sign 2y; then
+      fpr=$(gpg --list-secret-keys --with-colons "$email" 2>/dev/null | awk -F: '
+        /^sec:/ { usable = ($2 !~ /^[erdi]$/) && ($12 ~ /S/); next }
+        /^fpr:/ && usable { print $10; exit }
+      ')
+      [[ -n $fpr ]] && changed "generated GPG key ${fpr: -16}" ||
+        fail "key generated but no usable signing key found afterwards"
+    else
+      fail "gpg key generation failed"
+    fi
   fi
+  [[ -n ${fpr:-} ]] && git_set user.signingkey "$fpr"
 fi
 
 # --- GitHub keys --------------------------------------------------------------
@@ -111,6 +130,26 @@ ssh_pub=""
 for f in "$HOME"/.ssh/id_ed25519.pub "$HOME"/.ssh/id_rsa.pub "$HOME"/.ssh/*.pub; do
   [[ -r $f ]] && { ssh_pub=$f; break; }
 done
+
+# Same reasoning as the GPG key: generate rather than instruct. ssh-keygen
+# prompts for a passphrase, so this needs a terminal too.
+if [[ -z $ssh_pub ]] && dry; then
+  changed "would generate ~/.ssh/id_ed25519"
+elif [[ -z $ssh_pub ]] && [[ -t 0 ]] && command -v ssh-keygen >/dev/null; then
+  note "no SSH key — generating ~/.ssh/id_ed25519"
+  mkdir -p -m 700 "$HOME/.ssh"
+  if ssh-keygen -t ed25519 -C "${email:-$USER@$(uname -n)}" -f "$HOME/.ssh/id_ed25519"; then
+    ssh_pub=$HOME/.ssh/id_ed25519.pub
+    changed "generated $ssh_pub"
+  else
+    fail "ssh-keygen failed"
+  fi
+elif [[ -z $ssh_pub ]] && ! command -v ssh-keygen >/dev/null; then
+  warn "no SSH key and ssh-keygen is not installed"
+elif [[ -z $ssh_pub ]]; then
+  warn "no SSH key, and no terminal to create one"
+  note "run: ssh-keygen -t ed25519 -C \"${email:-your@email}\""
+fi
 
 # Uploading needs these; a token predating this module may carry neither.
 gh_scopes=(admin:public_key admin:gpg_key)

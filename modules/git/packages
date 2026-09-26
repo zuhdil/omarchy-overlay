@@ -1,4 +1,9 @@
-# gh uploads the SSH and GPG keys to GitHub. git itself is part of a base
-# Omarchy install, so it is not declared here.
+# gh uploads the SSH and GPG keys to GitHub, and logs in when needed.
+#
+# gnupg and openssh are only transitive dependencies on Omarchy — gnupg via
+# gpgme, openssh via gcr and gnome-keyring — so nothing guarantees they stay.
+# This module generates keys with both, so it declares them.
 
 github-cli
+gnupg
+openssh
