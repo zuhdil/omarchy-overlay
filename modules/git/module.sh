@@ -65,6 +65,10 @@ fi
 git_set commit.gpgsign true
 git_set tag.gpgsign true
 
+# Signing needs a terminal to prompt on where pinentry has no GUI to use. That
+# is `GPG_TTY`, set by the shell module's rc.sh — interactive-only, since
+# `$(tty)` means nothing without a terminal.
+
 # The identity the signing key is matched against. `--global` reads exactly one
 # file, and ~/.gitconfig shadows $XDG_CONFIG_HOME/git/config when both exist, so
 # an identity Omarchy seeded into the XDG file would read as unset. Fall back to

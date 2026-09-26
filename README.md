@@ -82,7 +82,7 @@ REPO=${OMARCHY_OVERLAY_DIR:-$HOME/.config/omarchy-overlay}
 | `hibernation` | Makes hibernate actually resume on this hybrid Intel+NVIDIA laptop, then wires up lid, idle and critical-battery triggers. See its `docs/hibernation.md`. |
 | `git` | `git lg` (graph) and `git lgs` (signature column) log aliases, enforced commit and tag signing, and the SSH and GPG keys uploaded to GitHub if they are not there already. |
 | `container-engine` | `toggle-container-engine` switches docker/compose between Podman and Docker. Selecting Podman also sets `DOCKER_BUILDKIT=0`, because Podman's API does not serve BuildKit and builds otherwise hang. |
-| `shell` | Shared shell config, split by interactivity and sourced from `~/.bashrc`. |
+| `shell` | Shared shell config, split by interactivity and sourced from `~/.bashrc`. `rc.sh` sets `GPG_TTY`, which commit signing needs wherever pinentry has no GUI. |
 
 ## What is never committed
 
