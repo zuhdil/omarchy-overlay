@@ -65,6 +65,10 @@ else
   ROOT_RUN=()
 fi
 as_root() { [[ ${#ROOT_RUN[@]} -gt 0 ]] && "${ROOT_RUN[@]}" "$1" 2>/dev/null; }
+# Same, but keeping stderr. Discarding it is right for a probe and wrong for a
+# call whose failure gets reported: "could not read the initramfs" with no
+# reason attached is not something anyone can act on.
+as_root_err() { [[ ${#ROOT_RUN[@]} -gt 0 ]] && "${ROOT_RUN[@]}" "$1" 2>&1; }
 have_root() { [[ ${#ROOT_RUN[@]} -gt 0 ]]; }
 
 # --- System shape -------------------------------------------------------------
@@ -261,10 +265,26 @@ elif ! as_root "test -r '$boot_img'"; then
   skip "initramfs image contents (root access lapsed — re-run with sudo)"
 else
   img=$(mktemp -t initrd-check.XXXXXX)
+  err=""
   if [[ $boot_img == *.efi ]]; then
-    as_root "objcopy -O binary --only-section=.initrd '$boot_img' '$img'"
+    # --dump-section copies the section's bytes out directly. The older
+    # `-O binary --only-section` spelling derives its output from section VMAs,
+    # so it can yield an empty file on a layout it does not expect; keep it as
+    # a fallback rather than trusting either one alone.
+    dis=$(mktemp -t initrd-discard.XXXXXX)
+    err=$(as_root_err "objcopy --dump-section .initrd='$img' '$boot_img' '$dis'")
+    as_root "rm -f '$dis'"; rm -f "$dis" 2>/dev/null
+    if [[ ! -s $img ]]; then
+      err+=$'\n'$(as_root_err "objcopy -O binary --only-section=.initrd '$boot_img' '$img'")
+    fi
+    if [[ ! -s $img ]]; then
+      # Almost always means the section is named something else. Say which
+      # sections the image does have, so the next step is obvious.
+      err+=$'\n'"sections present: $(as_root "objdump -h '$boot_img'" |
+        awk '/^ *[0-9]+ \./ { printf "%s ", $2 }')"
+    fi
   else
-    as_root "cat '$boot_img' > '$img'"
+    err=$(as_root_err "cat '$boot_img' > '$img'")
   fi
   extracted=0
   [[ -s $img ]] && extracted=1
@@ -281,7 +301,8 @@ else
   if [[ -z $listing ]] && ! as_root true; then
     skip "initramfs image contents (root access lapsed mid-check — re-run with sudo)"
   elif ((!extracted)); then
-    fail "could not read the initramfs from $boot_img"
+    fail "could not read the initramfs from $boot_img" \
+      "$(sed '/^$/d' <<<"$err" | tr '\n' ';' | sed 's/;$//')"
   elif [[ -z $listing ]]; then
     fail "lsinitcpio produced no listing for $boot_img"
   else
