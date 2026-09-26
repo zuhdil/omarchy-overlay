@@ -38,7 +38,10 @@ git_set tag.gpgsign true
 
 # The signing key is machine-specific: another machine has another key, so it is
 # derived from the local keyring rather than committed. Matched on the configured
-# email so a keyring holding several secret keys still picks the right one.
+# email, skipping keys that cannot sign (no `S` among the capabilities, which
+# covers the aggregate over subkeys) and keys that are expired, revoked,
+# disabled or invalid — an old key left in the keyring would otherwise be
+# picked first and every commit would fail.
 email=$(git config --global --get user.email 2>/dev/null) || email=
 if [[ -z $email ]]; then
   warn "git user.email is unset — cannot pick a signing key"
@@ -46,10 +49,12 @@ if [[ -z $email ]]; then
 elif ! command -v gpg >/dev/null; then
   skip "gpg not installed"
 else
-  fpr=$(gpg --list-secret-keys --with-colons "$email" 2>/dev/null |
-    awk -F: '/^fpr:/ { print $10; exit }')
+  fpr=$(gpg --list-secret-keys --with-colons "$email" 2>/dev/null | awk -F: '
+    /^sec:/ { usable = ($2 !~ /^[erdi]$/) && ($12 ~ /S/); next }
+    /^fpr:/ && usable { print $10; exit }
+  ')
   if [[ -z $fpr ]]; then
-    warn "no GPG secret key for $email"
+    warn "no usable GPG signing key for $email"
     note "create one with: gpg --full-generate-key  (ed25519 is a good default)"
     note "signing is enabled, so commits will fail until a key exists"
   else
