@@ -104,6 +104,16 @@ copy_system() {
     changed "$dest" || fail "could not install $dest"
 }
 
+# root_available [WHAT] — true when a sudo session exists. Reports and returns
+# false otherwise, so a module can skip rather than prompt. Any direct `sudo`
+# in a module must go through this: copy_system already does, and a prompt from
+# a hook or a non-interactive run is a hang rather than an error.
+root_available() {
+  ((${HAVE_SUDO:-0})) && return 0
+  warn "${1:-this step} needs root — re-run from a terminal"
+  return 1
+}
+
 # link_tree SRCDIR — symlink every file under SRCDIR into $HOME at the same path.
 link_tree() {
   local root=$1 f rel

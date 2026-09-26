@@ -54,6 +54,8 @@ elif ! grep -qE '^[[:space:]]*MODULES\+?=.*nvidia' "$nv_conf"; then
   ok "$nv_conf (no active NVIDIA MODULES line)"
 elif dry; then
   changed "$nv_conf (would comment out the NVIDIA MODULES line)"
+elif ! root_available "$nv_conf"; then
+  : # already reported
 else
   bak="$nv_conf.bak.$(date +%s)"
   sudo cp -a "$nv_conf" "$bak" && note "backup: $bak"
@@ -86,6 +88,8 @@ else
       warn "$k is not present in $up — not adding it blindly"
     elif dry; then
       changed "would set $k: $cur -> $v"
+    elif ! root_available "$up ($k)"; then
+      : # already reported
     else
       sudo sed -i "s|^$k=.*|$k=$v|" "$up" && changed "$k: $cur -> $v"
     fi
@@ -100,6 +104,8 @@ if systemctl list-unit-files nvidia-suspend-then-hibernate.service --no-legend 2
       ok "$u.service"
     elif dry; then
       changed "would enable $u.service"
+    elif ! root_available "$u.service"; then
+      : # already reported
     else
       sudo systemctl enable "$u.service" >/dev/null 2>&1 &&
         changed "$u.service enabled" || warn "could not enable $u.service"
@@ -124,7 +130,9 @@ end'
 # --- apply --------------------------------------------------------------------
 
 if ((INITRAMFS_DIRTY)) && ! dry; then
-  if command -v limine-mkinitcpio >/dev/null; then
+  if ! root_available "the initramfs rebuild"; then
+    :  # already reported; the config is staged but not yet built
+  elif command -v limine-mkinitcpio >/dev/null; then
     note "rebuilding the initramfs..."
     sudo bash -c 'echo "usr/lib/modules/$(uname -r)/modules.builtin" |
       /usr/share/libalpm/scripts/limine-mkinitcpio-install' >/dev/null 2>&1 &&

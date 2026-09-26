@@ -43,6 +43,9 @@ is missing instead of failing.
   and why each one silently breaks another machine.
 - **Scope expensive side effects.** The initramfs rebuild fires only when an
   initramfs-relevant file changed (`INITRAMFS_DIRTY`), not on any change.
+- **Never call `sudo` directly without `root_available`.** A prompt from a hook
+  or a non-interactive run is a hang, not an error. `copy_system` already
+  guards; module code must too.
 - **Backups follow Omarchy's convention**: `<file>.bak.<epoch>`, removed again
   when the content was identical.
 - **Use `$OMARCHY_OVERLAY_DIR`**, never a hardcoded repo path. `modules/shell/env.sh`
