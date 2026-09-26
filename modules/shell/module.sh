@@ -7,6 +7,27 @@
 # Sourced straight from the repo — no symlink, so there is never a question of
 # which copy is authoritative.
 
+# insert_once and append_once match on a path *tail*, so a line written by a
+# repo at a previous location still satisfies them while pointing nowhere. The
+# `[[ -r ]]` wrapper then makes that fail silently: no OMARCHY_OVERLAY_DIR, no
+# engine selection, no PATH entry, and no error. Repoint such a line first.
+repoint_stale() {
+  local file=$HOME/.bashrc tail=$1 want=$2 bak
+  [[ -f $file ]] || return 0
+  grep -q "$tail" "$file" 2>/dev/null || return 0   # nothing written yet
+  grep -qF "$want" "$file" && return 0              # already current
+  if dry; then
+    changed "would repoint a stale $tail line in $file"
+    return 0
+  fi
+  bak="$file.bak.$(date +%s)"
+  cp -a -- "$file" "$bak"
+  sed -i "s|[^ ]*$tail|$want|g" "$file" && changed "$file (repointed $tail)"
+  drop_backup_if_same "$bak" "$file"
+}
+repoint_stale 'omarchy-overlay/modules/shell/env.sh' "$MODULE_DIR/env.sh"
+repoint_stale 'omarchy-overlay/modules/shell/rc.sh' "$MODULE_DIR/rc.sh"
+
 insert_once "$HOME/.bashrc" 'omarchy-overlay/modules/shell/env.sh' \
   '[[ $- != *i* ]] && return' \
   "
