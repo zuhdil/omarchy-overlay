@@ -36,6 +36,30 @@ git_set alias.lgs "log-signed"
 # alias too.
 git_set pager.log-signed true
 
+# --- global ignores -----------------------------------------------------------
+
+# Git reads $XDG_CONFIG_HOME/git/ignore by default, so no core.excludesFile is
+# needed. `.tmp-commit-msg` is the scratch file used to write commit messages;
+# it was committed eight times here because `git add -A` ran while it still
+# existed, so ignoring it globally is cheaper than remembering not to stage it.
+ignore=${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore
+ignore_line='.tmp-commit-msg'
+
+if [[ -f $ignore ]] && grep -qFx -- "$ignore_line" "$ignore"; then
+  ok "$ignore already ignores $ignore_line"
+elif dry; then
+  if [[ -f $ignore ]]; then
+    changed "would add $ignore_line to $ignore"
+  else
+    changed "would create $ignore with $ignore_line"
+  fi
+elif mkdir -p -- "$(dirname -- "$ignore")" &&
+  printf '%s\n' "$ignore_line" >>"$ignore"; then
+  changed "$ignore ignores $ignore_line"
+else
+  fail "could not write $ignore"
+fi
+
 # --- signing ------------------------------------------------------------------
 
 git_set commit.gpgsign true
