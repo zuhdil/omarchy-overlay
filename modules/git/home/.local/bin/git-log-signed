@@ -10,24 +10,35 @@
 #
 # `%G?` emits a single letter; git cannot colour or map it in a format string,
 # so the translation happens here.
+#
+# Paging is git's job, enabled by `pager.log-signed` — see the module. That
+# means stdout is a pipe to the pager rather than a terminal, so GIT_PAGER_IN_USE
+# is what decides colour; testing for a tty alone would print plain text under
+# the pager and escape codes into a redirect.
 
 set -uo pipefail
+
+color=never
+if [[ -t 1 || ${GIT_PAGER_IN_USE:-} == true ]]; then
+  color=always
+fi
 
 # Tab-separated so the status can be split off without touching the rest of the
 # line, which carries its own colour escapes.
 fmt='%G?%x09%C(red)%h%C(reset)%C(auto)%d%C(reset) %s %C(blue)<%an>%C(reset)'
 
-git log --color=always --abbrev-commit --decorate --format=format:"$fmt" "$@" |
-  awk -F'\t' '
+git log --color=$color --abbrev-commit --decorate --format=format:"$fmt" "$@" |
+  awk -F'\t' -v on="$([[ $color == always ]] && echo 1 || echo 0)" '
     BEGIN {
-      sym["G"] = "\033[32m✓";   # good signature
-      sym["U"] = "\033[33m✓";   # good, untrusted key
-      sym["X"] = "\033[33m×";   # good, expired key
-      sym["Y"] = "\033[33m×";   # good, key expires soon
-      sym["R"] = "\033[31m×";   # good, revoked key
-      sym["B"] = "\033[31m✗";   # BAD signature
-      sym["E"] = "\033[33m?";   # cannot check (key missing)
-      sym["N"] = "\033[90m·";   # unsigned
+      if (on) { G="\033[32m"; R="\033[31m"; Y="\033[33m"; D="\033[90m"; Z="\033[0m" }
+      sym["G"] = G "✓";   # good signature
+      sym["U"] = Y "✓";   # good, untrusted key
+      sym["X"] = Y "×";   # good, expired key
+      sym["Y"] = Y "×";   # good, key expires soon
+      sym["R"] = R "×";   # good, revoked key
+      sym["B"] = R "✗";   # BAD signature
+      sym["E"] = Y "?";   # cannot check (key missing)
+      sym["N"] = D "·";   # unsigned
     }
-    { printf "%s\033[0m %s\n", ($1 in sym ? sym[$1] : "\033[33m" $1), $2 }
+    { printf "%s%s %s\n", ($1 in sym ? sym[$1] : Y $1), Z, $2 }
   '

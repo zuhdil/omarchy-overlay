@@ -31,6 +31,11 @@ git_set alias.lg "log --graph --abbrev-commit --decorate --format=format:'%C(red
 # git cannot colour or map `%G?` in a format string, so that lives in a script.
 git_set alias.lgs "log-signed"
 
+# External subcommands are not paged by default, so `lgs` would scroll past
+# where `git log` would stop. Keyed on the resolved command, which covers the
+# alias too.
+git_set pager.log-signed true
+
 # --- signing ------------------------------------------------------------------
 
 git_set commit.gpgsign true
