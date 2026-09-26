@@ -62,6 +62,16 @@ is missing instead of failing.
 - `hibernation-check` adapts to GPU layout, boot loader, swap type and whether a
   lid exists. Keep it that way; it is copied to other machines.
 
+## Git module specifics
+
+- Settings go in with `git config --global`, never by shipping a config file:
+  Omarchy seeds `~/.config/git/config`, and `omarchy refresh config git/config`
+  would discard a replacement.
+- `user.signingkey` is derived from the local keyring, never committed.
+- `git lgs` resolves to `git-log-signed` in `home/.local/bin/`. The `%G?`
+  letter-to-symbol mapping lives in that script because git can neither colour
+  nor translate `%G?` inside a format string.
+
 ## Verifying
 
 ```sh

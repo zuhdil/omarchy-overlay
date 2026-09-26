@@ -1,0 +1,4 @@
+# gh uploads the SSH and GPG keys to GitHub. git itself is part of a base
+# Omarchy install, so it is not declared here.
+
+github-cli

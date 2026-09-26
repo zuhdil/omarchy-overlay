@@ -1,0 +1,33 @@
+#!/bin/bash
+#
+# git log with a signature-status column.
+#
+#   git log-signed            # or `git lgs`, via the alias this module installs
+#   git log-signed -20 --all  # any git-log argument passes through
+#
+# Lives as a `git-` subcommand rather than a shell alias so the awk mapping is
+# a real, testable file instead of a quoted string inside ~/.config/git/config.
+#
+# `%G?` emits a single letter; git cannot colour or map it in a format string,
+# so the translation happens here.
+
+set -uo pipefail
+
+# Tab-separated so the status can be split off without touching the rest of the
+# line, which carries its own colour escapes.
+fmt='%G?%x09%C(red)%h%C(reset)%C(auto)%d%C(reset) %s %C(blue)<%an>%C(reset)'
+
+git log --color=always --abbrev-commit --decorate --format=format:"$fmt" "$@" |
+  awk -F'\t' '
+    BEGIN {
+      sym["G"] = "\033[32m✓";   # good signature
+      sym["U"] = "\033[33m✓";   # good, untrusted key
+      sym["X"] = "\033[33m×";   # good, expired key
+      sym["Y"] = "\033[33m×";   # good, key expires soon
+      sym["R"] = "\033[31m×";   # good, revoked key
+      sym["B"] = "\033[31m✗";   # BAD signature
+      sym["E"] = "\033[33m?";   # cannot check (key missing)
+      sym["N"] = "\033[90m·";   # unsigned
+    }
+    { printf "%s\033[0m %s\n", ($1 in sym ? sym[$1] : "\033[33m" $1), $2 }
+  '
