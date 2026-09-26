@@ -65,28 +65,27 @@ fi
 git_set commit.gpgsign true
 git_set tag.gpgsign true
 
-# The signing key is machine-specific: another machine has another key, so it is
-# derived from the local keyring rather than committed. Matched on the configured
-# email, skipping keys that cannot sign (no `S` among the capabilities, which
-# covers the aggregate over subkeys) and keys that are expired, revoked,
-# disabled or invalid — an old key left in the keyring would otherwise be
-# picked first and every commit would fail.
-# `--global` reads exactly one file. When both ~/.gitconfig and
-# $XDG_CONFIG_HOME/git/config exist, that file is ~/.gitconfig — so an identity
-# Omarchy seeded into the XDG file reads as unset, and the signing key would be
-# derived for the wrong address or not at all. Fall back to full resolution,
-# which reads every level the way git itself does when committing.
+# The identity the signing key is matched against. `--global` reads exactly one
+# file, and ~/.gitconfig shadows $XDG_CONFIG_HOME/git/config when both exist, so
+# an identity Omarchy seeded into the XDG file would read as unset. Fall back to
+# full resolution — what git itself uses when committing.
 email=$(git config --global --get user.email 2>/dev/null) || email=
 if [[ -z $email ]]; then
   email=$(git config --get user.email 2>/dev/null) || email=
   [[ -n $email ]] && note "user.email came from outside the global file ($email)"
 fi
+
 if [[ -z $email ]]; then
   warn "git user.email is unset — cannot pick a signing key"
   note "set it with: git config --global user.email <you@example.com>"
 elif ! command -v gpg >/dev/null; then
   skip "gpg not installed"
 else
+  # Machine-specific, so derived from the local keyring rather than committed:
+  # another machine has another key. Skips keys that cannot sign — no `S` among
+  # the capabilities, which is the aggregate over subkeys — and keys that are
+  # expired, revoked, disabled or invalid. An old key left in the keyring would
+  # otherwise be picked first, and every commit would fail to sign.
   fpr=$(gpg --list-secret-keys --with-colons "$email" 2>/dev/null | awk -F: '
     /^sec:/ { usable = ($2 !~ /^[erdi]$/) && ($12 ~ /S/); next }
     /^fpr:/ && usable { print $10; exit }
