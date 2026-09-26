@@ -264,14 +264,21 @@ elif [[ -z $boot_img ]]; then
 elif ! as_root "test -r '$boot_img'"; then
   skip "initramfs image contents (root access lapsed — re-run with sudo)"
 else
-  img=$(mktemp -t initrd-check.XXXXXX)
+  # Created BY root, deliberately. /tmp is world-writable and sticky, and
+  # fs.protected_regular=1 (the systemd default) denies a write to a file the
+  # opener does not own in such a directory — root included. A user-created
+  # mktemp therefore gets "Permission denied" from objcopy, and the file is
+  # left unlinked, which reads as "could not extract the initramfs".
+  img=$(as_root 'mktemp -t initrd-check.XXXXXX')
+  [[ -n $img ]] || img=$(mktemp -t initrd-check.XXXXXX)
   err=""
   if [[ $boot_img == *.efi ]]; then
     # --dump-section copies the section's bytes out directly. The older
     # `-O binary --only-section` spelling derives its output from section VMAs,
     # so it can yield an empty file on a layout it does not expect; keep it as
     # a fallback rather than trusting either one alone.
-    dis=$(mktemp -t initrd-discard.XXXXXX)
+    dis=$(as_root 'mktemp -t initrd-discard.XXXXXX')
+    [[ -n $dis ]] || dis=$(mktemp -t initrd-discard.XXXXXX)
     err=$(as_root_err "objcopy --dump-section .initrd='$img' '$boot_img' '$dis'")
     as_root "rm -f '$dis'"; rm -f "$dis" 2>/dev/null
     if [[ ! -s $img ]]; then
