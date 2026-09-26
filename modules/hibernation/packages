@@ -1,0 +1,5 @@
+# Packages this module needs.
+#   foo        official repos        ?foo      optional
+#   aur:foo    AUR                   ?aur:foo  optional, AUR
+
+hypridle      # idle -> hibernate; without it there is no idle trigger

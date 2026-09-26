@@ -50,12 +50,25 @@ is missing instead of failing.
   relocatable. Fall back to `${OMARCHY_OVERLAY_DIR:-$HOME/.config/omarchy-overlay}`
   in scripts that may run before a shell sourced `env.sh`.
 
+## Hibernation module specifics
+
+- `/etc/mkinitcpio.conf.d/omarchy_resume.conf` must keep the literal line
+  `HOOKS+=(resume)`. Omarchy's own setup/remove commands grep for it, and
+  upstream PR #8888's migration uses it as the trigger to replace the file.
+  When that lands, the module detects the `# omarchy:resume-hook` marker and
+  stands aside.
+- The hook embedded in `docs/hibernation.md` must stay byte-identical to
+  `home/.config/omarchy/hooks/post-update.d/check-hibernation.hook`.
+- `hibernation-check` adapts to GPU layout, boot loader, swap type and whether a
+  lid exists. Keep it that way; it is copied to other machines.
+
 ## Verifying
 
 ```sh
 ./install --dry-run      # no sudo, no writes
+sudo hibernation-check   # 23 checks, non-zero on failure
 ```
 
-A dry run proves only that the overlay is *configured* as intended, never that
-the thing it configures works. Where a module can be exercised for real, do
-that too.
+Neither proves hibernation *works* — only that it is configured. The real test
+is a cycle: compare `/proc/sys/kernel/random/boot_id` before and after.
+Unchanged means a true resume; changed means it rebooted instead.

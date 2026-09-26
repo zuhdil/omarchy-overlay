@@ -79,6 +79,7 @@ REPO=${OMARCHY_OVERLAY_DIR:-$HOME/.config/omarchy-overlay}
 
 | Module | What it does |
 | --- | --- |
+| `hibernation` | Makes hibernate actually resume on this hybrid Intel+NVIDIA laptop, then wires up lid, idle and critical-battery triggers. See its `docs/hibernation.md`. |
 | `container-engine` | `toggle-container-engine` switches docker/compose between Podman and Docker. Selecting Podman also sets `DOCKER_BUILDKIT=0`, because Podman's API does not serve BuildKit and builds otherwise hang. |
 | `shell` | Shared shell config, split by interactivity and sourced from `~/.bashrc`. |
 
@@ -87,6 +88,11 @@ REPO=${OMARCHY_OVERLAY_DIR:-$HOME/.config/omarchy-overlay}
 Machine-specific values. Copying them to another machine produces a system that
 looks fine and silently misbehaves:
 
+- **`resume_offset`** — the physical offset of *this* swapfile. `omarchy
+  hibernation setup` generates it per machine; the module refuses to run without it.
+- **`/etc/mkinitcpio.conf.d/nvidia.conf`** — removing NVIDIA from the initramfs
+  is correct on a *hybrid* machine and wrong on an NVIDIA-only one, where it is
+  the early KMS. The module branches on `omarchy-hw-hybrid-gpu`.
 - **`/etc/UPower/UPower.conf`** — package-owned. Keys are edited in place so a
   future `.pacnew` still carries everything else.
 - **`~/.bashrc`** — Omarchy seeds it and it collects per-machine settings. Shared

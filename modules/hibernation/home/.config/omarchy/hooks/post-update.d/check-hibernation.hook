@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# Hibernation regresses silently: a migration can put NVIDIA back in the
+# initramfs or reset the resume hook order, and `omarchy-hibernation-available`
+# still reports green either way. The failure only shows up the next time you
+# hibernate — by which point the update that caused it is long forgotten.
+#
+# post-update runs after system packages AND migrations, so this catches it
+# while the cause is still obvious.
+#
+# Runs unprivileged (19 of 23 checks) because the hook runs as the user and a
+# sudo prompt would stall the update. Both regressions this guards against are
+# config checks that need no root; `sudo hibernation-check` adds the initramfs
+# contents and swapfile-offset checks.
+
+command -v hibernation-check >/dev/null || exit 0
+
+# Deliberately no `omarchy-hibernation-available` guard: that check fails when
+# omarchy_resume.conf disappears or swap shrinks, so guarding on it would go
+# silent in exactly the case where hibernation had been torn down.
+
+if output=$(hibernation-check 2>&1); then
+  exit 0
+fi
+
+# Output is captured, so hibernation-check emits no colour codes to match around.
+failures=$(grep -c '  FAIL  ' <<<"$output")
+first=$(grep -m1 '  FAIL  ' <<<"$output" | sed 's/^ *FAIL *//')
+
+# Goes to the update log and the terminal running `omarchy update`.
+echo
+echo "Hibernation check FAILED after this update:"
+grep -E '  FAIL  ' <<<"$output" | sed 's/^/  /'
+echo "  Run 'sudo hibernation-check' for the full report."
+echo "  See ~/.config/omarchy-overlay/modules/hibernation/docs/hibernation.md to repair."
+echo
+
+omarchy-notification-send -u critical -g 󰤁 "Hibernation is broken" \
+  "$failures check(s) failed after the update. First: $first"
+
+# Never fail the update over this; the notification and log are the signal.
+exit 0

@@ -1,0 +1,407 @@
+#!/bin/bash
+# Verify hibernation is still correctly configured after an omarchy update.
+#
+# Checks the things that regress silently: NVIDIA returning to the initramfs,
+# the resume hook drifting after `filesystems`, sleep services being reset by a
+# package preset, and the swap/resume= wiring.
+#
+# Most checks run unprivileged. The initramfs image check needs root (/boot is
+# root-only); it is skipped with a warning otherwise. Run with sudo for the
+# full set.
+#
+# Exit: 0 = all good, 1 = at least one FAIL.
+#
+# See omarchy-hibernation-setup.md for what each check corresponds to.
+
+pass_n=0 fail_n=0 warn_n=0 skip_n=0
+
+if [[ -t 1 ]]; then
+  G=$'\e[32m' R=$'\e[31m' Y=$'\e[33m' B=$'\e[34m' D=$'\e[2m' N=$'\e[0m'
+else
+  G= R= Y= B= D= N=
+fi
+
+pass() { printf '%s  PASS%s  %s\n' "$G" "$N" "$1"; ((pass_n++)); }
+fail() {
+  printf '%s  FAIL%s  %s\n' "$R" "$N" "$1"
+  [[ -n ${2:-} ]] && printf '%s        %s%s\n' "$D" "$2" "$N"
+  ((fail_n++))
+}
+warn() {
+  printf '%s  WARN%s  %s\n' "$Y" "$N" "$1"
+  [[ -n ${2:-} ]] && printf '%s        %s%s\n' "$D" "$2" "$N"
+  ((warn_n++))
+}
+skip() { printf '%s  SKIP%s  %s\n' "$D" "$N" "$1"; ((skip_n++)); }
+section() { printf '\n%s%s%s\n' "$B" "$1" "$N"; }
+
+# Per-user configs must be read for the invoking user, not root: under sudo or
+# pkexec `~` is /root, which would report the real user's files as missing.
+if [[ -n ${SUDO_USER:-} ]]; then
+  USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+  CHECK_USER=$SUDO_USER
+elif [[ -n ${PKEXEC_UID:-} ]]; then
+  USER_HOME=$(getent passwd "$PKEXEC_UID" | cut -d: -f6)
+  CHECK_USER=$(getent passwd "$PKEXEC_UID" | cut -d: -f1)
+else
+  USER_HOME=$HOME
+  CHECK_USER=$(id -un)
+fi
+[[ -d ${USER_HOME:-} ]] || { USER_HOME=$HOME; CHECK_USER=$(id -un); }
+
+# Root is needed only for /boot and btrfs inspect-internal.
+#
+# `sudo -n` in BOTH the probe and every later call, deliberately: bare `sudo`
+# here would try to prompt, and from a post-update hook there is no one to
+# answer. sudo's timestamp can also lapse between the probe and the call (it
+# defaults to 5 minutes, and an update easily runs longer), so every as_root
+# must be treated as able to fail at any point — see the image section, which
+# reports that as SKIP rather than FAIL.
+if [[ $EUID -eq 0 ]]; then
+  ROOT_RUN=(bash -c)
+elif sudo -n true 2>/dev/null; then
+  ROOT_RUN=(sudo -n bash -c)
+else
+  ROOT_RUN=()
+fi
+as_root() { [[ ${#ROOT_RUN[@]} -gt 0 ]] && "${ROOT_RUN[@]}" "$1" 2>/dev/null; }
+have_root() { [[ ${#ROOT_RUN[@]} -gt 0 ]]; }
+
+# --- System shape -------------------------------------------------------------
+#
+# Written on a hybrid Intel+NVIDIA laptop with a btrfs swapfile and a Limine UKI.
+# None of that is universal, so discover it instead of assuming it: a check that
+# does not apply to this machine must SKIP, never FAIL.
+
+# Display controllers by vendor — the same sysfs scan omarchy_hooks.conf does.
+# An unreadable device counts as "another GPU", so an inconclusive scan errs
+# toward the hybrid rule rather than silently excusing an early NVIDIA load.
+GPU_NVIDIA=0 GPU_OTHER=0
+for _d in /sys/bus/pci/devices/*; do
+  [[ -r $_d/class && -r $_d/vendor ]] || { GPU_OTHER=1; continue; }
+  [[ $(<"$_d/class") == 0x03* ]] || continue
+  if [[ $(<"$_d/vendor") == 0x10de ]]; then GPU_NVIDIA=1; else GPU_OTHER=1; fi
+done
+unset _d
+
+# Only a swapfile needs resume_offset; a swap partition has no offset to record.
+SWAP_DEV=$(awk '!/Filename|zram/ {print $1; exit}' /proc/swaps)
+SWAP_KIND=$(awk '!/Filename|zram/ {print $2; exit}' /proc/swaps)
+
+# A desktop has no lid, so lid-close policy is not a finding there.
+if [[ -d /proc/acpi/button/lid ]] || grep -qs 'Lid Switch' /sys/class/input/*/name; then
+  HAS_LID=1
+else
+  HAS_LID=0
+fi
+
+section "Kernel support"
+
+if [[ -f /sys/power/image_size ]]; then
+  pass "kernel hibernation available (/sys/power/image_size)"
+else
+  fail "kernel hibernation unavailable" "/sys/power/image_size missing"
+fi
+
+disk_states=$(cat /sys/power/disk 2>/dev/null)
+if [[ $disk_states == *"[disabled]"* ]]; then
+  fail "hibernation disabled in /sys/power/disk" "$disk_states"
+elif [[ -n $disk_states ]]; then
+  pass "hibernation modes available: $disk_states"
+else
+  fail "/sys/power/disk unreadable"
+fi
+
+section "Swap and resume wiring"
+
+swap_kb=$(awk '!/Filename|zram/ {s += $3} END {print s + 0}' /proc/swaps)
+image_size=$(cat /sys/power/image_size 2>/dev/null || echo 0)
+swap_bytes=$((swap_kb * 1024))
+if ((swap_kb == 0)); then
+  fail "no non-zram swap active" "zram cannot hold a hibernation image"
+elif ((swap_bytes > image_size)); then
+  pass "disk swap $((swap_bytes / 1024 / 1024 / 1024)) GiB > image_size $((image_size / 1024 / 1024 / 1024)) GiB"
+else
+  fail "disk swap too small" "$swap_bytes bytes vs image_size $image_size"
+fi
+
+cmdline=$(cat /proc/cmdline)
+resume_dev=$(grep -oP 'resume=\K[^ ]+' <<<"$cmdline")
+resume_off=$(grep -oP 'resume_offset=\K[0-9]+' <<<"$cmdline")
+if [[ -z $resume_dev ]]; then
+  fail "resume= missing from kernel cmdline" \
+    "the initramfs has no idea where the image is; on Limine see /etc/limine-entry-tool.d/"
+elif [[ $SWAP_KIND == file && -z $resume_off ]]; then
+  fail "resume_offset= missing, but swap is a file" \
+    "a swapfile needs its physical offset; only a swap partition can omit it"
+elif [[ $SWAP_KIND == file ]]; then
+  pass "cmdline has resume=$resume_dev resume_offset=$resume_off"
+else
+  pass "cmdline has resume=$resume_dev (swap partition — no offset needed)"
+fi
+
+# The kernel's live view; empty means the resume device was never registered.
+if [[ -n $(cat /sys/power/resume 2>/dev/null) && $(cat /sys/power/resume) != "0:0" ]]; then
+  pass "kernel registered a resume device (/sys/power/resume = $(cat /sys/power/resume))"
+else
+  fail "kernel has no resume device registered" "resume will not be attempted at boot"
+fi
+
+if [[ $SWAP_KIND != file ]]; then
+  skip "resume_offset vs swapfile (swap is a $SWAP_KIND — no offset applies)"
+elif ! have_root; then
+  skip "resume_offset vs swapfile (needs root)"
+else
+  actual=$(as_root "btrfs inspect-internal map-swapfile -r '$SWAP_DEV'")
+  if [[ -z $actual ]]; then
+    skip "swapfile offset not verifiable (not btrfs)"
+  elif [[ $actual == "$resume_off" ]]; then
+    pass "resume_offset matches $SWAP_DEV ($actual)"
+  else
+    fail "resume_offset is stale" "cmdline=$resume_off actual=$actual — swapfile was recreated"
+  fi
+fi
+
+section "Initramfs configuration"
+
+# Active (uncommented) MODULES lines naming an nvidia GPU module.
+#
+# Whether that is a defect depends entirely on the GPU layout. On a hybrid
+# machine the iGPU provides early KMS, so the NVIDIA modules buy nothing and
+# their freeze callback breaks resume. On an NVIDIA-only machine they ARE the
+# early KMS — omarchy_hooks.conf drops the `kms` hook to suit — so demanding
+# their removal there would be wrong.
+nv_line=$(grep -rhE '^[[:space:]]*MODULES\+?=.*nvidia' \
+  /etc/mkinitcpio.conf /etc/mkinitcpio.conf.d/ 2>/dev/null | head -1)
+if ((!GPU_NVIDIA)); then
+  skip "NVIDIA initramfs check (no NVIDIA GPU on this machine)"
+elif ((!GPU_OTHER)); then
+  if [[ -n $nv_line ]]; then
+    pass "NVIDIA-only system: early load in the initramfs is expected"
+  else
+    warn "NVIDIA-only system with no early NVIDIA load" \
+      "early KMS at the LUKS/plymouth prompt may be lost; resume trouble on such systems is upstream #10039, not this rule"
+  fi
+elif [[ -n $nv_line ]]; then
+  fail "NVIDIA is in the initramfs MODULES on a hybrid system" \
+    "$nv_line — resume aborts with nv_pmops_freeze -5; see step 1"
+else
+  pass "no active NVIDIA MODULES line (correct for a hybrid system)"
+fi
+
+hooks=$(bash -c '
+  HOOKS=()
+  . /etc/mkinitcpio.conf 2>/dev/null
+  for f in /etc/mkinitcpio.conf.d/*.conf; do [[ -r $f ]] && . "$f"; done
+  printf "%s" "${HOOKS[*]}"' 2>/dev/null)
+
+if [[ -z $hooks ]]; then
+  fail "could not evaluate HOOKS from mkinitcpio config"
+else
+  idx() {
+    local i=0 h
+    for h in $hooks; do [[ $h == "$1" ]] && { echo "$i"; return; }; ((i++)); done
+    echo -1
+  }
+  i_resume=$(idx resume) i_fs=$(idx filesystems) i_enc=$(idx encrypt)
+
+  if ((i_resume < 0)); then
+    fail "resume hook missing from HOOKS" "$hooks"
+  elif ((i_fs >= 0 && i_resume > i_fs)); then
+    fail "resume hook runs AFTER filesystems" \
+      "root is mounted rw before the image is restored — btrfs corruption risk"
+  elif ((i_enc >= 0 && i_resume < i_enc)); then
+    fail "resume hook runs BEFORE encrypt" "the resume device will not exist yet"
+  else
+    pass "hook order correct (encrypt -> resume -> filesystems)"
+  fi
+
+  # More than one resume entry is harmless but signals a config collision.
+  n_resume=$(tr ' ' '\n' <<<"$hooks" | grep -cx resume)
+  ((n_resume > 1)) && warn "resume appears $n_resume times in HOOKS"
+fi
+
+# Upstream's managed drop-in (PR #8888) replaces the hand-fix; either is fine.
+rc=/etc/mkinitcpio.conf.d/omarchy_resume.conf
+if [[ -f $rc ]]; then
+  if grep -qFx '# omarchy:resume-hook' "$rc"; then
+    pass "omarchy_resume.conf is upstream's managed version"
+  elif grep -q '^HOOKS+=(resume)$' "$rc"; then
+    pass "omarchy_resume.conf keeps the HOOKS+=(resume) line (omarchy can detect it)"
+  else
+    warn "omarchy_resume.conf has neither the marker nor HOOKS+=(resume)" \
+      "omarchy-hibernation-remove will not recognise it"
+  fi
+else
+  fail "omarchy_resume.conf missing"
+fi
+
+section "Built initramfs image"
+
+# The boot image is a UKI on the ESP here, but it could be a plain initramfs
+# under /boot, and the ESP is not always /boot. Look for it rather than assume.
+# Runs as root because the ESP is typically mode 0700.
+boot_img=$(as_root '
+  for f in /boot/EFI/Linux/*.efi /efi/EFI/Linux/*.efi /boot/efi/EFI/Linux/*.efi; do
+    [[ -e $f ]] && { echo "$f"; exit 0; }
+  done
+  for f in "/boot/initramfs-$(uname -r).img" /boot/initramfs-linux.img; do
+    [[ -e $f ]] && { echo "$f"; exit 0; }
+  done
+  exit 1')
+
+# Privilege can evaporate between the probe above and here. "I could not look"
+# must never be reported as "hibernation is broken" — a health check that cries
+# wolf gets ignored, which is worse than one that admits a blind spot.
+if ! have_root; then
+  skip "initramfs image contents (needs root — re-run with sudo)"
+elif [[ -z $boot_img ]]; then
+  skip "initramfs image contents (no UKI or initramfs found; unrecognised boot layout)"
+elif ! as_root "test -r '$boot_img'"; then
+  skip "initramfs image contents (root access lapsed — re-run with sudo)"
+else
+  img=$(mktemp -t initrd-check.XXXXXX)
+  if [[ $boot_img == *.efi ]]; then
+    as_root "objcopy -O binary --only-section=.initrd '$boot_img' '$img'"
+  else
+    as_root "cat '$boot_img' > '$img'"
+  fi
+
+  if [[ ! -s $img ]]; then
+    fail "could not read the initramfs from $boot_img"
+  else
+    listing=$(as_root "lsinitcpio '$img'")
+    if grep -qx 'hooks/resume' <<<"$listing"; then
+      pass "resume hook present in the built image ($boot_img)"
+    else
+      fail "resume hook missing from the built image" \
+        "config is ahead of the image — rebuild (step 3)"
+    fi
+
+    # Same GPU-layout rule as the config check above.
+    gpu_ko=$(grep -E '/nvidia[^/]*\.ko(\.zst)?$' <<<"$listing" | grep -v 'hid-nvidia')
+    if ((!GPU_NVIDIA)); then
+      skip "NVIDIA modules in the image (no NVIDIA GPU)"
+    elif ((!GPU_OTHER)); then
+      if [[ -n $gpu_ko ]]; then
+        pass "NVIDIA modules in the image (expected on an NVIDIA-only system)"
+      else
+        warn "no NVIDIA modules in the image on an NVIDIA-only system" \
+          "early KMS may be lost at the LUKS/plymouth prompt"
+      fi
+    elif [[ -n $gpu_ko ]]; then
+      fail "proprietary NVIDIA modules are in the initramfs" "$(head -1 <<<"$gpu_ko")"
+    else
+      pass "no proprietary NVIDIA modules in the initramfs"
+    fi
+
+    if grep -q 'nouveau\.ko' <<<"$listing"; then
+      if as_root "grep -rqs 'blacklist nouveau' /usr/lib/modprobe.d /etc/modprobe.d" &&
+        grep -q 'modprobe.d' <<<"$listing"; then
+        pass "nouveau present but blacklisted, and the blacklist is bundled"
+      else
+        fail "nouveau is in the initramfs without a bundled blacklist" \
+          "it may bind the dGPU early and break resume"
+      fi
+    fi
+  fi
+  rm -f "$img"
+fi
+
+section "Sleep services and triggers"
+
+for u in nvidia-suspend nvidia-hibernate nvidia-resume nvidia-suspend-then-hibernate; do
+  if ! systemctl list-unit-files "$u.service" --no-legend 2>/dev/null | grep -q .; then
+    skip "$u.service not installed"
+    continue
+  fi
+  state=$(systemctl is-enabled "$u.service" 2>/dev/null)
+  if [[ $state == enabled ]]; then
+    pass "$u.service enabled"
+  else
+    fail "$u.service is $state" \
+      "a nvidia-580xx-utils upgrade can reapply its preset; re-enable it"
+  fi
+done
+
+if ((!HAS_LID)); then
+  skip "lid close policy (no lid switch — desktop)"
+else
+  lid=$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+    org.freedesktop.login1.Manager HandleLidSwitch 2>/dev/null |
+    awk '{gsub(/"/, "", $2); print $2}')
+  if [[ $lid == suspend-then-hibernate ]]; then
+    pass "lid close -> suspend-then-hibernate"
+  else
+    warn "lid close is '$lid', not suspend-then-hibernate"
+  fi
+fi
+
+delay=$(systemd-analyze cat-config systemd/sleep.conf 2>/dev/null |
+  grep -E '^HibernateDelaySec=' | tail -1 | cut -d= -f2)
+if [[ -n $delay ]]; then
+  pass "HibernateDelaySec=$delay"
+else
+  warn "HibernateDelaySec not set (systemd default applies)"
+fi
+
+if [[ -f /etc/UPower/UPower.conf ]]; then
+  action=$(grep -E '^CriticalPowerAction=' /etc/UPower/UPower.conf | cut -d= -f2)
+  if [[ $action == Hibernate ]]; then
+    pass "critical battery -> Hibernate"
+  else
+    warn "UPower CriticalPowerAction=$action (expected Hibernate)"
+    [[ -f /etc/UPower/UPower.conf.pacnew ]] &&
+      warn "UPower.conf.pacnew exists — merge it"
+  fi
+fi
+
+section "Idle trigger (user: $CHECK_USER)"
+
+if command -v hypridle >/dev/null; then
+  if pgrep -x hypridle >/dev/null; then
+    pass "hypridle running"
+  else
+    fail "hypridle installed but not running" \
+      "it starts from $USER_HOME/.config/hypr/autostart.lua at login"
+  fi
+  hc=$USER_HOME/.config/hypr/hypridle.conf
+  if [[ -f $hc ]] && grep -qE 'on-timeout\s*=.*hibernate' "$hc"; then
+    t=$(grep -E '^\s*timeout\s*=' "$hc" | head -1 | grep -oE '[0-9]+')
+    pass "hypridle has a hibernate listener (timeout ${t:-?}s)"
+  else
+    fail "no hibernate listener in $hc"
+  fi
+  if grep -q 'hypridle' "$USER_HOME/.config/hypr/autostart.lua" 2>/dev/null; then
+    pass "autostart.lua starts hypridle"
+  else
+    fail "autostart.lua no longer starts hypridle" "omarchy refresh hyprland resets this file"
+  fi
+else
+  skip "hypridle not installed (no idle-hibernate trigger)"
+fi
+
+section "Omarchy's own check"
+
+if command -v omarchy-hibernation-available >/dev/null; then
+  if omarchy-hibernation-available; then
+    pass "omarchy-hibernation-available reports available (Hibernate menu entry shown)"
+  else
+    fail "omarchy-hibernation-available reports unavailable"
+  fi
+  printf '%s  note  it only checks swap size and that omarchy_resume.conf exists;\n' "$D"
+  printf '        it cannot detect a bad hook order or NVIDIA in the initramfs%s\n' "$N"
+fi
+
+printf '\n%s=== %d passed, %d failed, %d warnings, %d skipped ===%s\n' \
+  "$B" "$pass_n" "$fail_n" "$warn_n" "$skip_n" "$N"
+
+if ((fail_n > 0)); then
+  printf '%sHibernation is likely broken. See omarchy-hibernation-setup.md.%s\n' "$R" "$N"
+  exit 1
+fi
+printf '%sConfiguration looks correct. Confirm with a real cycle:%s\n' "$G" "$N"
+printf '  id=$(cat /proc/sys/kernel/random/boot_id); systemctl hibernate\n'
+printf '  # power back on, then compare:\n'
+printf '  [[ $(cat /proc/sys/kernel/random/boot_id) == $id ]] && echo RESUMED || echo REBOOTED\n'
+exit 0
