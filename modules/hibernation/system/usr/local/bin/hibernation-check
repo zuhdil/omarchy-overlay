@@ -245,14 +245,36 @@ section "Built initramfs image"
 # The boot image is a UKI on the ESP here, but it could be a plain initramfs
 # under /boot, and the ESP is not always /boot. Look for it rather than assume.
 # Runs as root because the ESP is typically mode 0700.
-boot_img=$(as_root '
+# Several UKIs can sit side by side — an Arch kernel and an Omarchy one, or an
+# image left behind by a kernel that has since been replaced. Taking the first
+# the glob returns verifies whichever sorts first, which need not be the one
+# that booted: every check below would then pass while the image resume
+# actually uses goes unexamined. A UKI records its kernel in `.uname`, so match
+# that against the running one.
+boot_info=$(as_root '
+  running=$(uname -r)
+  first="" t=$(mktemp) d=$(mktemp)
   for f in /boot/EFI/Linux/*.efi /efi/EFI/Linux/*.efi /boot/efi/EFI/Linux/*.efi; do
-    [[ -e $f ]] && { echo "$f"; exit 0; }
+    [[ -e $f ]] || continue
+    [[ -n $first ]] || first=$f
+    if objcopy --dump-section .uname="$t" "$f" "$d" 2>/dev/null &&
+       [[ $(tr -d "\0" < "$t") == "$running" ]]; then
+      rm -f "$t" "$d"; printf "%s\nmatch\n" "$f"; exit 0
+    fi
   done
-  for f in "/boot/initramfs-$(uname -r).img" /boot/initramfs-linux.img; do
-    [[ -e $f ]] && { echo "$f"; exit 0; }
+  rm -f "$t" "$d"
+  [[ -n $first ]] && { printf "%s\nnomatch\n" "$first"; exit 0; }
+  for f in "/boot/initramfs-$running.img" /boot/initramfs-linux.img; do
+    [[ -e $f ]] && { printf "%s\nmatch\n" "$f"; exit 0; }
   done
   exit 1')
+boot_img=$(sed -n 1p <<<"$boot_info")
+boot_match=$(sed -n 2p <<<"$boot_info")
+
+if [[ -n $boot_img && $boot_match == nomatch ]]; then
+  fail "no boot image matches the running kernel $(uname -r)" \
+    "checking $boot_img instead — the image this machine boots is not being verified"
+fi
 
 # Privilege can evaporate between the probe above and here. "I could not look"
 # must never be reported as "hibernation is broken" — a health check that cries

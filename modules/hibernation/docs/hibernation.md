@@ -6,6 +6,11 @@ Omarchy 4.0.3-1, kernel 7.2.3-arch1-3. Done 2026-09-13/14.
 Hibernate wrote its image fine but never resumed. Two defects caused it; steps
 1–3 fix them, steps 4–8 add automatic hibernation.
 
+**The `hibernation` module applies all of this.** `./install hibernation` from
+the repo root does steps 1–8 and installs the checker and the post-update hook.
+The steps below are kept as the reasoning behind each change — read them to
+understand or repair, not to apply by hand.
+
 ---
 
 ## 1. Remove NVIDIA from the initramfs
@@ -103,14 +108,33 @@ Expect `… block encrypt resume filesystems fsck btrfs-overlayfs`.
 
 **What landed in the image** — one elevated shell, since `/boot` is root-only:
 
+More than one UKI can live in `/boot/EFI/Linux/`. This machine has two because
+two kernels are installed — `linux` builds `omarchy_linux.efi` and
+`linux-omarchy` builds `omarchy_linux-omarchy.efi`. Neither is leftover: the
+Arch one is the fallback to boot if a `linux-omarchy` upgrade ever does not, and
+both pick up the resume fix, since they share `/etc/mkinitcpio.conf.d/`.
+
+Only the UKI whose `.uname` section matches `uname -r` is the image in use, so
+select it rather than taking the first the glob returns:
+
 ```sh
 sudo bash -c '
-  objcopy -O binary --only-section=.initrd \
-    /boot/EFI/Linux/omarchy_linux.efi /tmp/i.img
+  for u in /boot/EFI/Linux/*.efi; do
+    objcopy --dump-section .uname=/tmp/un "$u" /tmp/discard 2>/dev/null
+    [[ $(tr -d "\0" </tmp/un) == $(uname -r) ]] && UKI=$u
+  done
+  echo "checking $UKI"
+  objcopy --dump-section .initrd=/tmp/i.img "$UKI" /tmp/discard
   lsinitcpio /tmp/i.img | grep -E "hooks/(encrypt|resume)$"
   lsinitcpio /tmp/i.img | grep -E "\.ko(\.zst)?$" | grep -iE "nvidia|nouveau|i915"
-  rm -f /tmp/i.img'
+  rm -f /tmp/i.img /tmp/discard /tmp/un'
 ```
+
+The output file must be created by **root**, inside the elevated shell as above.
+Handing root a path you created yourself (`img=$(mktemp); sudo objcopy … "$img"`)
+fails with *"Permission denied"*: `/tmp` is world-writable and sticky, and
+`fs.protected_regular=1` forbids writing to a file the opener does not own in
+such a directory — root included.
 
 Expect `hooks/encrypt` and `hooks/resume`, and GPU modules limited to
 `i915.ko.zst`, `nouveau.ko.zst` (blacklisted by `nvidia-580xx-utils.conf`, which
@@ -145,10 +169,17 @@ HibernateDelaySec=30min
 
 ## 6. NVIDIA suspend-then-hibernate hook
 
+All four NVIDIA sleep units matter: the suspend/hibernate/resume trio saves and
+restores video memory, and the fourth covers the combined transition.
+
 ```sh
-sudo systemctl enable nvidia-suspend-then-hibernate.service
+sudo systemctl enable nvidia-suspend.service nvidia-hibernate.service \
+  nvidia-resume.service nvidia-suspend-then-hibernate.service
 sudo systemctl reload systemd-logind
 ```
+
+A `nvidia-580xx-utils` upgrade can reapply its preset and disable them again,
+which is why the checker tests all four.
 
 ## 7. Critical battery → hibernate
 
@@ -261,16 +292,28 @@ That script covers every row above and exits non-zero on failure. With sudo it
 runs all 23 checks; without, 19 — the ones needing `/boot` and `btrfs
 inspect-internal` are skipped.
 
+It picks the boot image by matching each UKI's `.uname` against `uname -r`. A
+kernel change can add a UKI under a new name and leave the old one in place, and
+verifying the wrong one would report a healthy image while the one that actually
+boots went unexamined. If nothing matches the running kernel, that is itself a
+failure rather than a silent fallback.
+
 - `NVIDIA is back in the initramfs MODULES` → redo step 1, then step 3
 - `resume hook runs AFTER filesystems` → redo step 2, then step 3
 
 `omarchy-hibernation-available` stays green in both cases — it only checks swap
 size and that `omarchy_resume.conf` exists. Do not rely on it.
 
-The script lives at `/usr/local/bin/hibernation-check`, installed from `modules/hibernation/system/` — world-readable, so copy
-it out to edit and `sudo install -m 755` it back. That directory matters: it is
-on sudo's `secure_path`, while `~/.local/bin` is not, so a copy there would make
-plain `sudo hibernation-check` fail with "command not found".
+The script lives at `/usr/local/bin/hibernation-check`, copied there from
+`modules/hibernation/system/` by the installer. **Edit the repo copy and re-run
+`./install hibernation`** — editing `/usr/local/bin` directly puts a change on
+the machine that the repo does not have, and the next install overwrites it.
+
+`system/` is copied rather than symlinked on purpose: this repo is user-writable,
+and `sudo hibernation-check` must not execute a file you can rewrite. The
+`/usr/local/bin` location matters too — it is on sudo's `secure_path`, while
+`~/.local/bin` is not, so a copy there would make plain `sudo hibernation-check`
+fail with "command not found".
 
 The script validates configuration, not behavior. After a kernel or NVIDIA driver
 upgrade, a real cycle is the only proof — see **Verifying a resume**.
@@ -308,47 +351,13 @@ which parts apply.
 ### Running it automatically
 
 `omarchy update` calls `omarchy-hook post-update` after system packages **and**
-migrations — exactly where a regression lands. Install a hook there so the check
-runs itself:
+migrations — exactly where a regression lands, so the module installs a hook
+there and the check runs itself.
 
-```sh
-omarchy hook install post-update ./check-hibernation.hook
-# -> ~/.config/omarchy/hooks/post-update.d/check-hibernation.hook
-```
-
-```bash
-#!/bin/bash
-
-# Runs unprivileged (19 of 23 checks): the hook runs as the user, and a sudo
-# prompt would stall the update. Both regressions above are config checks that
-# need no root.
-
-command -v hibernation-check >/dev/null || exit 0
-
-# Deliberately no `omarchy-hibernation-available` guard: that check fails when
-# omarchy_resume.conf disappears or swap shrinks, so guarding on it would go
-# silent in exactly the case where hibernation had been torn down.
-
-if output=$(hibernation-check 2>&1); then
-  exit 0
-fi
-
-# Output is captured, so hibernation-check emits no colour codes to match around.
-failures=$(grep -c '  FAIL  ' <<<"$output")
-first=$(grep -m1 '  FAIL  ' <<<"$output" | sed 's/^ *FAIL *//')
-
-echo
-echo "Hibernation check FAILED after this update:"
-grep -E '  FAIL  ' <<<"$output" | sed 's/^/  /'
-echo "  Run 'sudo hibernation-check' for the full report."
-echo "  See ~/.config/omarchy-overlay/modules/hibernation/docs/hibernation.md to repair."
-echo
-omarchy-notification-send -u critical -g 󰤁 "Hibernation is broken" \
-  "$failures check(s) failed after the update. First: $first"
-
-# Never fail the update over this; the log and notification are the signal.
-exit 0
-```
+The hook is `modules/hibernation/home/.config/omarchy/hooks/post-update.d/check-hibernation.hook`,
+symlinked into place by `./install hibernation`. It is not reproduced here: a
+copy in this file would drift from the one that actually runs, and it already
+had. Read it there.
 
 Silent when healthy. On failure it prints into the update log and sends a
 critical desktop notification, but exits 0 so the update itself still succeeds.
