@@ -23,6 +23,7 @@ else
 fi
 
 DRY=${DRY:-0}
+SKIP_PACKAGES=${SKIP_PACKAGES:-0}
 CHANGED=0
 FAILED=0
 
@@ -231,8 +232,8 @@ append_once() {
   printf '%s\n' "$block" >>"$f" && changed "$f (appended)"
 }
 
-# insert_once FILE MARKER ANCHOR_RE BLOCK — idempotent insert BEFORE the first
-# line matching ANCHOR_RE.
+# insert_once FILE MARKER ANCHOR BLOCK — idempotent insert BEFORE the first
+# line containing ANCHOR.
 #
 # Needed because ~/.bashrc returns early for non-interactive shells:
 #
