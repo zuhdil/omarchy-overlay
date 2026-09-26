@@ -19,7 +19,24 @@ if [[ ! -f /etc/mkinitcpio.conf.d/omarchy_resume.conf ]]; then
   note "which are machine-specific and must never come from the repo."
   return 0 2>/dev/null || exit 0
 fi
-ok "hibernation storage present (swapfile, resume= cmdline)"
+# That file only proves `omarchy hibernation setup` ran at some point. The
+# storage it describes can be removed or recreated afterwards, so report what is
+# actually true rather than claiming more than was checked. Neither is fatal —
+# the rest of the module still applies — and hibernation-check does the deeper
+# verification, including whether the offset still matches the swapfile.
+if awk '!/Filename|zram/ { found = 1 } END { exit !found }' /proc/swaps; then
+  ok "disk swap is active"
+else
+  warn "no non-zram swap is active — nothing can hold a hibernation image"
+  note "re-run: omarchy hibernation setup"
+fi
+
+if grep -q 'resume=' /proc/cmdline; then
+  ok "resume= is on the kernel cmdline"
+else
+  warn "resume= is missing from the running kernel cmdline"
+  note "expected after 'omarchy hibernation setup' and a reboot"
+fi
 
 # --- resume hook ordering -----------------------------------------------------
 
