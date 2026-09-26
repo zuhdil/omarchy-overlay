@@ -43,6 +43,7 @@ fi
 # Only a change to what goes INTO the initramfs justifies rebuilding it.
 # Symlinking a hypridle config must not cost a two-minute UKI rebuild.
 INITRAMFS_DIRTY=0
+MODULE_BEFORE=$CHANGED
 _before=$CHANGED
 
 # Upstream's managed drop-in (PR #8888) supersedes our fix; leave it alone.
@@ -146,7 +147,11 @@ end'
 
 # --- apply --------------------------------------------------------------------
 
-if ((INITRAMFS_DIRTY)) && ! dry; then
+if ((INITRAMFS_DIRTY)) && dry; then
+  # A two-minute UKI rebuild and a reboot are the most consequential thing this
+  # module does. --dry-run promises the full picture, so say so here too.
+  changed "would rebuild the initramfs (~2 min), then a reboot is needed"
+elif ((INITRAMFS_DIRTY)); then
   if ! root_available "the initramfs rebuild"; then
     :  # already reported; the config is staged but not yet built
   elif command -v limine-mkinitcpio >/dev/null; then
@@ -161,8 +166,10 @@ if ((INITRAMFS_DIRTY)) && ! dry; then
 fi
 
 # Policy files are picked up by a reload, which is cheap and unrelated to the
-# initramfs; do it whenever this module touched anything as root.
-if ((HAVE_SUDO)) && ! dry; then
+# initramfs. Only when this module actually changed something: restarting upower
+# drops the power daemon for a moment, and a run that reports all-ok has no
+# reason to do that.
+if ((CHANGED != MODULE_BEFORE)) && ((HAVE_SUDO)) && ! dry; then
   sudo systemctl reload systemd-logind 2>/dev/null
   sudo systemctl restart upower 2>/dev/null
 fi

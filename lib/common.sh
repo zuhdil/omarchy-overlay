@@ -28,7 +28,11 @@ CHANGED=0
 FAILED=0
 
 ok()      { printf '%s  ok     %s %s\n' "$C_D" "$C_N" "$1"; }
-changed() { printf '%s  changed%s %s\n' "$C_G" "$C_N" "$1"; CHANGED=1; }
+# Counts rather than flags. Modules are sourced into one process, so a module
+# asking "did my own section change anything?" by comparing $CHANGED before and
+# after can only tell with a count — a flag another module already set to 1
+# stays 1, and the comparison silently reports no change.
+changed() { printf '%s  changed%s %s\n' "$C_G" "$C_N" "$1"; CHANGED=$((CHANGED + 1)); }
 skip()    { printf '%s  skip   %s %s\n' "$C_D" "$C_N" "$1"; }
 warn()    { printf '%s  warn   %s %s\n' "$C_Y" "$C_N" "$1"; }
 fail()    { printf '%s  FAIL   %s %s\n' "$C_R" "$C_N" "$1"; FAILED=1; }
