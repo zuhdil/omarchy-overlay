@@ -64,7 +64,6 @@ fi
 
 git_set commit.gpgsign true
 git_set tag.gpgsign true
-
 # Signing needs a terminal to prompt on where pinentry has no GUI to use. That
 # is `GPG_TTY`, set by the shell module's rc.sh — interactive-only, since
 # `$(tty)` means nothing without a terminal.
@@ -165,7 +164,6 @@ else
     note "run: gpg --quick-generate-key \"$email\" ed25519 sign 2y"
     note "signing is enabled, so commits will fail until a key exists"
   elif [[ -z $fpr ]]; then
-    name=$(git config --get user.name 2>/dev/null) || name=
     note "no GPG signing key for $email — generating one (pinentry will ask for a passphrase)"
     if gpg --quick-generate-key "${name:+$name }<$email>" ed25519 sign 2y; then
       fpr=$(gpg --list-secret-keys --with-colons "$email" 2>/dev/null | awk -F: '
@@ -197,7 +195,7 @@ if [[ -z $ssh_pub ]] && dry; then
 elif [[ -z $ssh_pub ]] && [[ -t 0 ]] && command -v ssh-keygen >/dev/null; then
   note "no SSH key — generating ~/.ssh/id_ed25519"
   mkdir -p -m 700 "$HOME/.ssh"
-  if ssh-keygen -t ed25519 -C "${email:-$USER@$(uname -n)}" -f "$HOME/.ssh/id_ed25519"; then
+  if ssh-keygen -t ed25519 -C "${email:-$(id -un)@$(uname -n)}" -f "$HOME/.ssh/id_ed25519"; then
     ssh_pub=$HOME/.ssh/id_ed25519.pub
     changed "generated $ssh_pub"
   else
@@ -269,10 +267,9 @@ elif ! gh_ready; then
 else
   # SSH. Compared on the key material, not the title: the same key uploaded
   # under a different name is still the same key.
-  if [[ -z $ssh_pub ]]; then
-    skip "no SSH public key in ~/.ssh"
-    note "create one with: ssh-keygen -t ed25519 -C \"$email\""
-  else
+  # Empty only when generation above failed, which reported why; saying so a
+  # second time here would read as a separate problem.
+  if [[ -n $ssh_pub ]]; then
     material=$(awk '{print $2}' "$ssh_pub")
     if gh ssh-key list 2>/dev/null | grep -qF -- "$material"; then
       ok "SSH key already on GitHub ($(basename "$ssh_pub"))"
