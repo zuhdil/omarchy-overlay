@@ -71,7 +71,16 @@ git_set tag.gpgsign true
 # covers the aggregate over subkeys) and keys that are expired, revoked,
 # disabled or invalid — an old key left in the keyring would otherwise be
 # picked first and every commit would fail.
+# `--global` reads exactly one file. When both ~/.gitconfig and
+# $XDG_CONFIG_HOME/git/config exist, that file is ~/.gitconfig — so an identity
+# Omarchy seeded into the XDG file reads as unset, and the signing key would be
+# derived for the wrong address or not at all. Fall back to full resolution,
+# which reads every level the way git itself does when committing.
 email=$(git config --global --get user.email 2>/dev/null) || email=
+if [[ -z $email ]]; then
+  email=$(git config --get user.email 2>/dev/null) || email=
+  [[ -n $email ]] && note "user.email came from outside the global file ($email)"
+fi
 if [[ -z $email ]]; then
   warn "git user.email is unset — cannot pick a signing key"
   note "set it with: git config --global user.email <you@example.com>"
@@ -93,20 +102,74 @@ fi
 
 # --- GitHub keys --------------------------------------------------------------
 
+# Find what there is to upload before touching authentication. Logging in to
+# push nothing would interrupt a run for no reason.
+ssh_pub=""
+for f in "$HOME"/.ssh/id_ed25519.pub "$HOME"/.ssh/id_rsa.pub "$HOME"/.ssh/*.pub; do
+  [[ -r $f ]] && { ssh_pub=$f; break; }
+done
+
+# Uploading needs these; a token predating this module may carry neither.
+gh_scopes=(admin:public_key admin:gpg_key)
+
+# gh_ready — true when gh can upload keys. Logs in or widens scopes when it
+# cannot, rather than printing a command and skipping: on a fresh machine this
+# step is never authenticated, so reporting alone would make it useless exactly
+# where it is needed. Both actions open a browser, so both need a terminal.
+gh_ready() {
+  local missing=() sc args=()
+
+  if ! gh auth status >/dev/null 2>&1; then
+    if dry; then
+      changed "would run gh auth login (opens a browser)"
+      return 1
+    elif [[ ! -t 0 ]]; then
+      warn "gh is not authenticated, and there is no terminal to log in from"
+      note "run: gh auth login -s ${gh_scopes[*]}"
+      return 1
+    fi
+    note "gh is not authenticated — opening a browser to log in"
+    for sc in "${gh_scopes[@]}"; do args+=(-s "$sc"); done
+    if ! gh auth login "${args[@]}"; then
+      warn "gh auth login did not complete — GitHub keys not checked"
+      return 1
+    fi
+    changed "authenticated with gh"
+  fi
+
+  # Authenticated, but possibly without the scopes the uploads need.
+  sc=$(gh auth status 2>&1 | sed -n "s/.*Token scopes: //p" | tr -d "'")
+  [[ $sc == *admin:public_key* ]] || missing+=(admin:public_key)
+  [[ $sc == *gpg_key* ]] || missing+=(admin:gpg_key)
+  ((${#missing[@]})) || return 0
+
+  if dry; then
+    changed "would request gh scopes: ${missing[*]}"
+    return 1
+  elif [[ ! -t 0 ]]; then
+    warn "gh token lacks: ${missing[*]}"
+    note "run: gh auth refresh -s $(IFS=,; echo "${missing[*]}")"
+    return 1
+  fi
+  note "widening gh scopes: ${missing[*]}"
+  args=()
+  for sc in "${missing[@]}"; do args+=(-s "$sc"); done
+  gh auth refresh "${args[@]}" && changed "gh scopes widened" && return 0
+  warn "could not widen gh scopes — GitHub keys not checked"
+  return 1
+}
+
 if ! command -v gh >/dev/null; then
   skip "gh not installed — GitHub keys not checked"
-elif ! gh auth status >/dev/null 2>&1; then
-  warn "gh is not authenticated — GitHub keys not checked"
-  note "run: gh auth login"
+elif [[ -z $ssh_pub && -z ${fpr:-} ]]; then
+  skip "no SSH or GPG key on this machine to upload"
+elif ! gh_ready; then
+  : # gh_ready already reported why
 else
   # SSH. Compared on the key material, not the title: the same key uploaded
   # under a different name is still the same key.
-  ssh_pub=""
-  for f in "$HOME"/.ssh/id_ed25519.pub "$HOME"/.ssh/id_rsa.pub "$HOME"/.ssh/*.pub; do
-    [[ -r $f ]] && { ssh_pub=$f; break; }
-  done
   if [[ -z $ssh_pub ]]; then
-    warn "no SSH public key in ~/.ssh"
+    skip "no SSH public key in ~/.ssh"
     note "create one with: ssh-keygen -t ed25519 -C \"$email\""
   else
     material=$(awk '{print $2}' "$ssh_pub")
@@ -117,8 +180,7 @@ else
     elif gh ssh-key add "$ssh_pub" --title "${HOSTNAME:-$(uname -n)}" >/dev/null 2>&1; then
       changed "uploaded $ssh_pub to GitHub"
     else
-      warn "could not upload $ssh_pub"
-      note "gh may need the scope: gh auth refresh -h github.com -s admin:public_key"
+      fail "could not upload $ssh_pub"
     fi
   fi
 
@@ -132,8 +194,7 @@ else
     elif gpg --armor --export "$fpr" | gh gpg-key add - >/dev/null 2>&1; then
       changed "uploaded GPG key ${fpr: -16} to GitHub"
     else
-      warn "could not upload GPG key ${fpr: -16}"
-      note "gh may need the scope: gh auth refresh -h github.com -s write:gpg_key"
+      fail "could not upload GPG key ${fpr: -16}"
     fi
   fi
 fi
