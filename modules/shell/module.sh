@@ -14,16 +14,22 @@
 repoint_stale() {
   local file=$HOME/.bashrc tail=$1 want=$2 bak
   [[ -f $file ]] || return 0
-  grep -q "$tail" "$file" 2>/dev/null || return 0   # nothing written yet
-  grep -qF "$want" "$file" && return 0              # already current
+  grep -qF "$tail" "$file" 2>/dev/null || return 0   # nothing written yet
+  grep -qF "$want" "$file" && return 0               # already current
   if dry; then
     changed "would repoint a stale $tail line in $file"
     return 0
   fi
-  bak="$file.bak.$(date +%s)"
-  cp -a -- "$file" "$bak"
-  sed -i "s|[^ ]*$tail|$want|g" "$file" && changed "$file (repointed $tail)"
-  drop_backup_if_same "$bak" "$file"
+  bak=$(back_up "$file") || { fail "could not back up $file"; return 1; }
+  if sed -i "s|[^ ]*$tail|$want|g" "$file"; then
+    changed "$file (repointed $tail)"
+    drop_backup_if_same "$bak" "$file"
+  else
+    # Silence here would leave ~/.bashrc sourcing a path that no longer exists
+    # — the exact fault this function exists to repair.
+    fail "could not repoint $tail in $file"
+    note "the original is at $bak"
+  fi
 }
 repoint_stale 'omarchy-overlay/modules/shell/env.sh' "$MODULE_DIR/env.sh"
 repoint_stale 'omarchy-overlay/modules/shell/rc.sh' "$MODULE_DIR/rc.sh"

@@ -39,9 +39,13 @@ dry() { ((DRY)); }
 
 # back_up FILE — Omarchy's convention. Echoes the backup path, or nothing.
 back_up() {
-  local f=$1 b
+  local f=$1 b n=0
   [[ -e $f || -L $f ]] || return 0
   b="$f.bak.$(date +%s)"
+  # Backing one file up twice inside the same second must not reuse the name:
+  # the first backup holds the original, the second would hold our own edit,
+  # and clobbering it loses the only copy of what was there before the run.
+  while [[ -e $b ]]; do b="$f.bak.$(date +%s).$((++n))"; done
   if dry; then note "would back up $f -> $b"; echo "$b"; return 0; fi
   cp -a -- "$f" "$b" && echo "$b"
 }
