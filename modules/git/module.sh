@@ -69,19 +69,78 @@ git_set tag.gpgsign true
 # is `GPG_TTY`, set by the shell module's rc.sh — interactive-only, since
 # `$(tty)` means nothing without a terminal.
 
-# The identity the signing key is matched against. `--global` reads exactly one
-# file, and ~/.gitconfig shadows $XDG_CONFIG_HOME/git/config when both exist, so
-# an identity Omarchy seeded into the XDG file would read as unset. Fall back to
-# full resolution — what git itself uses when committing.
-email=$(git config --global --get user.email 2>/dev/null) || email=
-if [[ -z $email ]]; then
-  email=$(git config --get user.email 2>/dev/null) || email=
-  [[ -n $email ]] && note "user.email came from outside the global file ($email)"
-fi
+# ask_identity KEY LABEL [REGEX] — prompt for a git identity field and set it.
+# Only called with a terminal present.
+ask_identity() {
+  local key=$1 label=$2 pattern=${3:-} val i
+  for i in 1 2 3; do
+    read -r -p "         $label: " val || return 1
+    val=${val#"${val%%[![:space:]]*}"}
+    val=${val%"${val##*[![:space:]]}"}
+    if [[ -z $val ]]; then
+      warn "$label cannot be empty"
+    elif [[ -n $pattern && ! $val =~ $pattern ]]; then
+      warn "that does not look like an email address"
+    elif git config --global "$key" "$val"; then
+      changed "git $key = $val"
+      return 0
+    else
+      fail "could not set git $key"
+      return 1
+    fi
+  done
+  warn "giving up on $label after three attempts"
+  return 1
+}
+
+# git_identity KEY LABEL [REGEX] — read a field into GIT_IDENTITY, asking for
+# it when unset. The result comes back in a variable rather than on stdout:
+# this function also reports, and a `note` on stdout would otherwise be captured
+# as the value.
+#
+# `--global` reads exactly one file, and ~/.gitconfig shadows
+# $XDG_CONFIG_HOME/git/config when both exist, so an identity Omarchy seeded
+# into the XDG file would read as unset. Fall back to full resolution — what git
+# itself uses when committing — before concluding anything is missing.
+#
+# Asking rather than skipping: the email selects the signing key and names every
+# commit, so without it this module can neither sign nor identify what it
+# configures.
+GIT_IDENTITY=""
+git_identity() {
+  local key=$1 label=$2 pattern=${3:-} val
+  GIT_IDENTITY=""
+
+  val=$(git config --global --get "$key" 2>/dev/null) || val=
+  if [[ -z $val ]]; then
+    val=$(git config --get "$key" 2>/dev/null) || val=
+    [[ -n $val ]] && note "$key came from outside the global file ($val)"
+  fi
+  if [[ -n $val ]]; then
+    GIT_IDENTITY=$val
+    return 0
+  fi
+
+  if dry; then
+    changed "would prompt for git $key"
+    return 1
+  fi
+  if [[ ! -t 0 ]]; then
+    warn "git $key is unset, and there is no terminal to ask on"
+    note "set it with: git config --global $key <value>"
+    return 1
+  fi
+  ask_identity "$key" "$label" "$pattern" || return 1
+  GIT_IDENTITY=$(git config --global --get "$key")
+}
+
+git_identity user.email "your email" '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+email=$GIT_IDENTITY
+git_identity user.name "your name"
+name=$GIT_IDENTITY
 
 if [[ -z $email ]]; then
-  warn "git user.email is unset — cannot pick a signing key"
-  note "set it with: git config --global user.email <you@example.com>"
+  warn "no user.email — skipping signing key setup"
 elif ! command -v gpg >/dev/null; then
   skip "gpg not installed"
 else
