@@ -19,14 +19,32 @@ ENGINES="$REPO/modules/container-engine/engines"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-overlay"
 LINK="$STATE/container-engine.sh"
 
+# The name recorded in the link, read without resolving it: a link left behind
+# by a repo that has since moved still says which engine was wanted, and a
+# toggle should honour that rather than reset the machine to a default.
 current() {
   [[ -L $LINK ]] || { echo "none"; return; }
-  basename "$(readlink -f -- "$LINK")" .sh
+  basename -- "$(readlink -- "$LINK")" .sh
+}
+
+# Whether that selection is live. Same test the module uses: the link has to
+# resolve to a readable engine inside *this* repo. Without it a stale link
+# reports an engine while sourcing nothing, so the shell has no DOCKER_HOST
+# while --status claims podman — the one command you run to find that out.
+engine_live() {
+  local t
+  t=$(readlink -f -- "$LINK" 2>/dev/null) || return 1
+  [[ -r $t && $t == "$ENGINES/"* ]]
 }
 
 case ${1:-toggle} in
   --status | -s)
-    echo "engine:      $(current)"
+    engine=$(current)
+    echo "engine:      $engine"
+    if [[ $engine != none ]] && ! engine_live; then
+      echo "             BROKEN — $LINK does not resolve into $ENGINES"
+      echo "             re-select with: ${0##*/} $engine"
+    fi
     echo "DOCKER_HOST: ${DOCKER_HOST:-<unset>}"
     exit 0
     ;;
