@@ -111,16 +111,29 @@ done
 
 section "Result"
 
+# "Already up to date" is reserved for a run that had nothing to do. A run that
+# was blocked — most often system/ files on a machine with no sudo session —
+# warns and changes nothing, and used to report the same words as success. On a
+# fresh machine that was every drop-in under /etc and the checker.
+#
+# Warnings do not change the exit status: some are advisory rather than blocked
+# ("~/.bashrc sets DOCKER_HOST directly"), and a caller should not have to tell
+# them apart. The text is where the distinction lives.
+tally=""
+((WARNED)) && tally=" ($WARNED warning$([[ $WARNED == 1 ]] || echo s) above)"
+
 if ((FAILED)); then
-  echo "  Something failed above. Fix it, then re-run."
+  echo "  $FAILED step$([[ $FAILED == 1 ]] || echo s) failed. Fix, then re-run.$tally"
   exit 1
 fi
 if ((DRY)); then
-  echo "  Dry run — nothing was changed."
+  echo "  Dry run — nothing was changed.$tally"
   exit 0
 fi
 if ((CHANGED)); then
-  echo "  Changes applied."
+  echo "  Changes applied.$tally"
+elif ((WARNED)); then
+  echo "  Nothing applied.$tally"
 else
   echo "  Already up to date."
 fi

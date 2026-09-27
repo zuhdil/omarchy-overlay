@@ -26,6 +26,7 @@ DRY=${DRY:-0}
 SKIP_PACKAGES=${SKIP_PACKAGES:-0}
 CHANGED=0
 FAILED=0
+WARNED=0
 
 ok()      { printf '%s  ok     %s %s\n' "$C_D" "$C_N" "$1"; }
 # Counts rather than flags. Modules are sourced into one process, so a module
@@ -34,8 +35,12 @@ ok()      { printf '%s  ok     %s %s\n' "$C_D" "$C_N" "$1"; }
 # stays 1, and the comparison silently reports no change.
 changed() { printf '%s  changed%s %s\n' "$C_G" "$C_N" "$1"; CHANGED=$((CHANGED + 1)); }
 skip()    { printf '%s  skip   %s %s\n' "$C_D" "$C_N" "$1"; }
-warn()    { printf '%s  warn   %s %s\n' "$C_Y" "$C_N" "$1"; }
-fail()    { printf '%s  FAIL   %s %s\n' "$C_R" "$C_N" "$1"; FAILED=1; }
+# Counted, like changed(), and for the same reason plus one more: a warning is
+# how a step says it did not do what it would have — most often a system file
+# that needed root on a run with no sudo session. Without a count the summary
+# had no way to tell that from a clean run.
+warn()    { printf '%s  warn   %s %s\n' "$C_Y" "$C_N" "$1"; WARNED=$((WARNED + 1)); }
+fail()    { printf '%s  FAIL   %s %s\n' "$C_R" "$C_N" "$1"; FAILED=$((FAILED + 1)); }
 section() { printf '\n%s%s%s\n' "$C_B" "$1" "$C_N"; }
 note()    { printf '%s         %s%s\n' "$C_D" "$1" "$C_N"; }
 

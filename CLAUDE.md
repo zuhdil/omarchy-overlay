@@ -34,6 +34,10 @@ is missing instead of failing.
 ## Invariants
 
 - **Idempotent.** A second run reports only `ok`. Verify with `./install --dry-run`.
+- **`warn` means "I did not do this."** It is counted, and a run with warnings
+  reports `Nothing applied` or `Changes applied (N warnings above)` rather than
+  `Already up to date`. Use `note` for anything advisory, or the summary
+  overstates. `skip` is for what does not apply here and is not counted.
 - **Honour `dry`.** Every write guarded, or done through the `lib/common.sh`
   helpers, which already handle it.
 - **Skip, never fail, what does not apply.** No NVIDIA GPU is not a fault. A
