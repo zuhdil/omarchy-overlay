@@ -18,11 +18,20 @@
 
 set -uo pipefail
 
-REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# readlink -f first: `cd $(dirname)` resolves symlinks in the directory path
+# but not the final component, so an install symlinked into ~/bin would look
+# for modules beside the link and find none.
+SELF=$(readlink -f -- "${BASH_SOURCE[0]}")
+REPO=$(cd -- "$(dirname -- "$SELF")" && pwd)
 # Exported so modules, toggle scripts and anything they call locate the overlay
 # without hardcoding a path. shell/env.sh derives the same value for shells.
 export OMARCHY_OVERLAY_DIR=$REPO
 MODULES_DIR="$REPO/modules"
+[[ -d $MODULES_DIR ]] || {
+  echo "no modules directory at $MODULES_DIR" >&2
+  echo "run this from inside the overlay checkout" >&2
+  exit 1
+}
 DRY=0
 SKIP_PACKAGES=0
 declare -a WANTED=()
@@ -85,14 +94,16 @@ export HAVE_SUDO
 ((DRY)) || mkdir -p "$STATE_DIR"
 
 if ((${#WANTED[@]} == 0)); then
-  mapfile -t WANTED < <(cd "$MODULES_DIR" && ls -d */ | tr -d /)
+  for m in "$MODULES_DIR"/*/; do
+    [[ -d $m ]] && WANTED+=("$(basename -- "$m")")
+  done
 fi
 
 for name in "${WANTED[@]}"; do
   mod="$MODULES_DIR/$name"
   if [[ ! -d $mod ]]; then
     echo "no such module: $name (try --list)" >&2
-    FAILED=1
+    FAILED=$((FAILED + 1))
     continue
   fi
 
