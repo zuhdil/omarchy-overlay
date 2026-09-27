@@ -8,5 +8,10 @@
 # package that is not installed, and installing it would collide with mise-bin.
 mise-bin
 
-# The status line parses Claude's JSON on stdin with jq.
+# The status line parses Claude's JSON with it, and module.sh merges
+# settings.json with it. Required rather than optional (`?jq`): it is a hard
+# dependency of the omarchy package itself and is in omarchy-base.packages, so
+# on a machine this overlay targets the line is documentation rather than an
+# install step. And there is no degraded mode to mark optional — without jq the
+# status line renders an empty string.
 jq

@@ -2,11 +2,29 @@
 # Status line for Claude Code, mirroring the Starship prompt configuration.
 # Reads JSON from stdin and produces a one-line status string.
 
-input=$(cat)
+# --- Read Claude's JSON, once ---
+#
+# One jq pass rather than one per field. This runs on every status line
+# refresh, and starting the interpreter costs far more than the parse: four
+# calls measured ~6 ms of a ~30 ms render, the rest being git.
+#
+# @tsv rather than raw newlines, because it escapes any tab or newline inside a
+# value — a directory may legally contain either, and a raw split would then
+# shift every later field into the wrong variable.
+#
+# `//` in jq only substitutes for null and false, so a genuine 0 percent still
+# comes through as 0 rather than falling back to the empty string.
+IFS=$'\t' read -r cwd model used_pct session_pct < <(
+  jq -r '[
+    (.workspace.current_dir // .cwd // ""),
+    (.model.display_name // ""),
+    (.context_window.used_percentage // ""),
+    (.rate_limits.five_hour.used_percentage // "")
+  ] | @tsv'
+)
 
 # --- Directory ---
-# Use the cwd from Claude's context, styled like the Starship [directory] module.
-cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // empty')
+# Styled like the Starship [directory] module.
 home="$HOME"
 # Replace $HOME prefix with ~ for brevity, matching typical shell display.
 # The tilde is escaped: bash tilde-expands an unquoted ~ in the replacement, so
@@ -47,17 +65,9 @@ if [ -n "$branch" ]; then
   fi
 fi
 
-# --- Model ---
-model=$(echo "$input" | jq -r '.model.display_name // empty')
-
-# --- Context usage ---
-used_pct=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
-
-# --- Session usage (5-hour rate-limit window) ---
-# This is the subscription quota shown by /usage, distinct from the context
-# window above. The rate_limits object only appears for Claude.ai Pro/Max
+# `session_pct` is the subscription quota shown by /usage, distinct from the
+# context window. The rate_limits object only appears for Claude.ai Pro/Max
 # subscribers after the first API response, so it may legitimately be empty.
-session_pct=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
 
 # --- Assemble the line ---
 # Format: <dir> <branch> <git_status>  <model>  ctx:<n>%  sess:<n>%
