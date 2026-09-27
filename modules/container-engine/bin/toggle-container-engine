@@ -14,7 +14,19 @@
 
 set -euo pipefail
 
-REPO=${OMARCHY_OVERLAY_DIR:-$HOME/.config/omarchy-overlay}
+# Where the repo is, derived from this script's own location. It is symlinked
+# into ~/.local/bin from inside the repo, so resolving that link answers the
+# question exactly — and a shell that has not sourced env.sh has no
+# OMARCHY_OVERLAY_DIR to offer. The old hardcoded ~/.config/omarchy-overlay
+# fallback made a clone under any other name report a healthy selection as
+# BROKEN and then refuse the very repair it had just suggested.
+SELF=$(readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null) || SELF=
+REPO=""
+[[ -n $SELF ]] && REPO=$(cd -- "$(dirname -- "$SELF")/../../.." 2>/dev/null && pwd)
+# Validated, then fallen back on: a copy taken out of the repo resolves to a
+# directory three levels above wherever it now sits, which is not the repo.
+[[ -d ${REPO:-}/modules/container-engine/engines ]] ||
+  REPO=${OMARCHY_OVERLAY_DIR:-$HOME/.config/omarchy-overlay}
 ENGINES="$REPO/modules/container-engine/engines"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-overlay"
 LINK="$STATE/container-engine.sh"

@@ -37,6 +37,11 @@ else
       changed "engine selection re-pointed to $want"
     else
       changed "engine defaulted to $want"
+      # toggle-container-engine refuses to select an engine whose CLI is
+      # absent; defaulting to one silently would leave the shell with a
+      # DOCKER_HOST pointing at a socket nothing serves.
+      command -v "$want" >/dev/null ||
+        warn "$want is not installed — the default selection will not work yet"
       note "switch with: toggle-container-engine [podman|docker|--status]"
     fi
   else
