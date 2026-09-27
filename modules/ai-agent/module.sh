@@ -37,27 +37,36 @@ link_tree "$MODULE_DIR/home"
 # the harness not offer them at all, so the rule holds even on a turn where the
 # instruction is outranked or missing.
 settings=$HOME/.claude/settings.json
-want='{
-  "statusLine": { "type": "command", "command": "~/.claude/statusline-command.sh" },
-  "attribution": { "commit": "", "pr": "", "sessionUrl": false }
-}'
+# An absolute path, not ~/...: settings.json is machine-local and never
+# committed, so a portable spelling buys nothing, and whether the harness runs
+# this through a shell that would expand the tilde is not documented.
+want=$(jq -n --arg cmd "$HOME/.claude/statusline-command.sh" '{
+  statusLine: { type: "command", command: $cmd },
+  attribution: { commit: "", pr: "", sessionUrl: false }
+}')
 
 if ! command -v jq >/dev/null; then
   skip "jq not installed — cannot merge $settings"
-elif [[ -e $settings ]] && ! jq -e . "$settings" >/dev/null 2>&1; then
+elif [[ -e $settings ]] && ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
   # Claude Code silently ignores a settings file it cannot parse, so rewriting
   # one that is already broken would hide the real problem behind our change.
-  fail "$settings is not valid JSON — leaving it alone"
+  # Tested for object, not merely valid JSON: an array parses fine and then
+  # cannot be multiplied, which would leave the merge below empty.
+  fail "$settings is not a JSON object — leaving it alone"
 else
   if [[ -e $settings ]]; then
-    merged=$(jq --argjson want "$want" '. * $want' "$settings")
+    merged=$(jq --argjson want "$want" '. * $want' "$settings") || merged=""
     current=$(jq -S . "$settings")
   else
     merged=$(jq -n --argjson want "$want" '$want')
     current=""
   fi
 
-  if [[ $current == "$(jq -S . <<<"$merged")" ]]; then
+  if [[ -z $merged ]]; then
+    # Never write what a failed jq left behind: printf would happily truncate
+    # the file to a single newline and the run would still report success.
+    fail "could not merge into $settings — leaving it alone"
+  elif [[ $current == "$(jq -S . <<<"$merged")" ]]; then
     ok "$settings (statusLine, attribution)"
   elif dry; then
     changed "would set statusLine and attribution in $settings"
