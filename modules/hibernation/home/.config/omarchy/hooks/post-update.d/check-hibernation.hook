@@ -32,7 +32,18 @@ echo
 echo "Hibernation check FAILED after this update:"
 grep -E '  FAIL  ' <<<"$output" | sed 's/^/  /'
 echo "  Run 'sudo hibernation-check' for the full report."
-echo "  See ~/.config/omarchy-overlay/modules/hibernation/docs/hibernation.md to repair."
+
+# This file is a symlink into the repo, so its own path locates the module —
+# no guess at where the checkout lives. The suffix is stripped rather than
+# counted back with ../.., which at seven levels is unreadable and silently
+# wrong if the tree shifts.
+self=$(readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null)
+doc=${self%/home/.config/omarchy/hooks/post-update.d/*}/docs/hibernation.md
+if [[ -r $doc ]]; then
+  echo "  See $doc to repair."
+else
+  echo "  See modules/hibernation/docs/hibernation.md in your omarchy-overlay checkout."
+fi
 echo
 
 omarchy-notification-send -u critical -g 󰤁 "Hibernation is broken" \

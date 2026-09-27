@@ -462,8 +462,18 @@ printf '\n%s=== %d passed, %d failed, %d warnings, %d skipped ===%s\n' \
   "$B" "$pass_n" "$fail_n" "$warn_n" "$skip_n" "$N"
 
 if ((fail_n > 0)); then
-  printf '%sHibernation is likely broken. See %s/modules/hibernation/docs/hibernation.md%s\n' \
-    "$R" "${OMARCHY_OVERLAY_DIR:-$USER_HOME/.config/omarchy-overlay}" "$N"
+  # This script is copied to /usr/local/bin, so it cannot derive where the
+  # repo is, and sudo's env_reset strips OMARCHY_OVERLAY_DIR before it is read
+  # — so the fallback below is the normal case, not the exception. Print the
+  # path only once it is known to exist; naming one that does not is how a
+  # renamed or relocated checkout gets sent somewhere empty.
+  doc=${OMARCHY_OVERLAY_DIR:-$USER_HOME/.config/omarchy-overlay}/modules/hibernation/docs/hibernation.md
+  if [[ -r $doc ]]; then
+    printf '%sHibernation is likely broken. See %s%s\n' "$R" "$doc" "$N"
+  else
+    printf '%sHibernation is likely broken. See modules/hibernation/docs/hibernation.md%s\n' "$R" "$N"
+    printf '%sin your omarchy-overlay checkout.%s\n' "$R" "$N"
+  fi
   exit 1
 fi
 printf '%sConfiguration looks correct. Confirm with a real cycle:%s\n' "$G" "$N"
