@@ -1,4 +1,4 @@
-# desc: Claude Code — install via mise, status line, and my global conventions
+# desc: Claude Code via mise, a status line, conventions for every agent in use
 
 # Claude ships faster than any distro package can follow, so Omarchy installs it
 # through mise: omarchy-mise-install writes a ~/.local/bin wrapper that pins the
@@ -40,12 +40,16 @@ conventions=$MODULE_DIR/conventions/AGENTS.md
 # install/user/mise.sh runs omarchy-mise-install for every agent it ships —
 # codex, crush, gemini, opencode, pi, grok, cursor-agent — and each writes a
 # wrapper that downloads the tool on first use. A wrapper means offered, not
-# used. mise creates an install directory only once the tool has really run.
+# used, and mise only has the tool once it has really run — so ask mise.
+#
+# `mise where` rather than a test for ~/.local/share/mise/installs/<cli>:
+# MISE_DATA_DIR relocates that directory and `mise where` follows it, exiting
+# 0 with a path when installed and 1 when not.
 agent_in_use() {
   local cli=$1 wrapper
   wrapper=$(command -v "$cli" 2>/dev/null) || return 1
   if grep -qs 'mise x' -- "$wrapper"; then
-    [[ -d $HOME/.local/share/mise/installs/$cli ]]
+    mise where "$cli" >/dev/null 2>&1
   else
     return 0   # installed some other way; being on PATH is the evidence
   fi
@@ -66,8 +70,13 @@ while read -r cli instructions skills; do
     continue
   fi
   link_home "$conventions" "$HOME/$instructions"
-  [[ -n $skills && -d $HOME/$skills ]] &&
+  if [[ -n $skills && -d $HOME/$skills ]]; then
     link_home "$MODULE_DIR/skills/git-conventions" "$HOME/$skills/git-conventions"
+  elif [[ -n $skills ]]; then
+    # Said out loud rather than passed over: an agent in use whose skills
+    # directory is missing is a surprise worth seeing in the report.
+    skip "$cli has no ~/$skills — skill not linked"
+  fi
 done <<'AGENTS'
 claude .claude/CLAUDE.md .claude/skills
 codex  .codex/AGENTS.md  .codex/skills
