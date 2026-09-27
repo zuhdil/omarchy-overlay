@@ -7,6 +7,17 @@
 # Sourced straight from the repo — no symlink, so there is never a question of
 # which copy is authoritative.
 
+# Without ~/.bashrc there is nothing to wire into, and insert_once and
+# append_once would each warn about the same missing file without saying what
+# it costs. Omarchy always seeds one, so this is the non-Omarchy case.
+if [[ ! -f $HOME/.bashrc ]]; then
+  warn "$HOME/.bashrc does not exist — nothing to wire shell config into"
+  note "without it: no \$OMARCHY_OVERLAY_DIR, no container engine selected,"
+  note "~/.local/bin not on PATH, and GPG_TTY unset for commit signing"
+  note "create one and re-run: touch ~/.bashrc"
+  return 0 2>/dev/null || exit 0
+fi
+
 # insert_once and append_once match on a path *tail*, so a line written by a
 # repo at a previous location still satisfies them while pointing nowhere. The
 # `[[ -r ]]` wrapper then makes that fail silently: no OMARCHY_OVERLAY_DIR, no

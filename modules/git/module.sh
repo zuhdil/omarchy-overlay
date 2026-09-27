@@ -164,6 +164,12 @@ else
     note "run: gpg --quick-generate-key \"$email\" ed25519 sign 2y"
     note "signing is enabled, so commits will fail until a key exists"
   elif [[ -z $fpr ]]; then
+    # pinentry needs to be told which terminal to prompt on wherever it has no
+    # GUI. rc.sh exports GPG_TTY, but only for shells started after the shell
+    # module has run — and that module sorts after this one, so on a first
+    # install the shell running it has no GPG_TTY and key generation would fail
+    # with "Inappropriate ioctl for device" on a TTY or over SSH.
+    [[ -t 0 && -z ${GPG_TTY:-} ]] && export GPG_TTY=$(tty)
     note "no GPG signing key for $email — generating one (pinentry will ask for a passphrase)"
     if gpg --quick-generate-key "${name:+$name }<$email>" ed25519 sign 2y; then
       fpr=$(gpg --list-secret-keys --with-colons "$email" 2>/dev/null | awk -F: '

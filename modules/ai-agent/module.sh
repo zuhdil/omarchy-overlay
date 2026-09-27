@@ -77,13 +77,12 @@ while read -r cli instructions skills; do
     continue
   fi
   link_home "$conventions" "$HOME/$instructions"
-  if [[ -n $skills && -d $HOME/$skills ]]; then
+  # No test that the skills directory already exists: link_home creates the
+  # parent, and this line is only reached for an agent in use, so creating its
+  # skills directory is right. Requiring it first meant a fresh machine — where
+  # nothing has created ~/.claude/skills yet — got no skill at all.
+  [[ -n $skills ]] &&
     link_home "$MODULE_DIR/skills/git-conventions" "$HOME/$skills/git-conventions"
-  elif [[ -n $skills ]]; then
-    # Said out loud rather than passed over: an agent in use whose skills
-    # directory is missing is a surprise worth seeing in the report.
-    skip "$cli has no ~/$skills — skill not linked"
-  fi
 done <<'AGENTS'
 claude .claude/CLAUDE.md .claude/skills
 codex  .codex/AGENTS.md  .codex/skills
