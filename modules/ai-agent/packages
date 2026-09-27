@@ -1,0 +1,12 @@
+# claude itself is NOT a package. omarchy-mise-install writes a ~/.local/bin
+# wrapper that pins and runs it through mise, which is how Omarchy ships every
+# tool that updates itself faster than a distro package can follow. module.sh
+# calls it when no claude is on PATH.
+#
+# mise-bin, not mise: /usr/bin/mise here is owned by mise-bin from the omarchy
+# repo, and it is in omarchy-base.packages. Declaring "mise" would name a
+# package that is not installed, and installing it would collide with mise-bin.
+mise-bin
+
+# The status line parses Claude's JSON on stdin with jq.
+jq

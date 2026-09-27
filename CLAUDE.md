@@ -60,10 +60,32 @@ is missing instead of failing.
   upstream PR #8888's migration uses it as the trigger to replace the file.
   When that lands, the module detects the `# omarchy:resume-hook` marker and
   stands aside.
-- The hook embedded in `docs/hibernation.md` must stay byte-identical to
-  `home/.config/omarchy/hooks/post-update.d/check-hibernation.hook`.
+- `docs/hibernation.md` must not reproduce the post-update hook. It used to
+  carry an inline copy that had to match
+  `home/.config/omarchy/hooks/post-update.d/check-hibernation.hook` byte for
+  byte, and the copy drifted anyway. It links to the file instead.
 - `hibernation-check` adapts to GPU layout, boot loader, swap type and whether a
   lid exists. Keep it that way; it is copied to other machines.
+
+## AI agent module specifics
+
+- `claude` is not a package. `packages` names `mise-bin` (the omarchy-repo
+  package that owns `/usr/bin/mise`, listed in `omarchy-base.packages`), and
+  `module.sh` calls `omarchy-mise-install claude` when no wrapper exists. Do
+  not "fix" that to `mise` — that names a package this machine does not have
+  and would collide with `mise-bin`.
+- Test for the wrapper at `~/.local/bin/claude` as well as on `PATH`. This
+  module sorts before `shell`, so on a fresh machine `~/.local/bin` is not on
+  `PATH` yet and a `command -v` test alone reinstalls what is already there.
+- `~/.claude/settings.json` is merged key by key, never replaced: Claude Code
+  writes its own state there. A file that is already invalid JSON is reported,
+  not rewritten — Claude Code ignores an unparseable settings file silently,
+  and overwriting it would hide that.
+- The split between `CLAUDE.md` and the `git-conventions` skill is deliberate.
+  A skill only loads when the model matches its description, so anything that
+  must hold on every turn — no AI attribution, GPG signing — stays in
+  `CLAUDE.md`. `attribution` in `settings.json` enforces the first of those in
+  the harness, where no instruction can outrank it.
 
 ## Git module specifics
 
