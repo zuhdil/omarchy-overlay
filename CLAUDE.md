@@ -81,6 +81,18 @@ is missing instead of failing.
   writes its own state there. A file that is already invalid JSON is reported,
   not rewritten — Claude Code ignores an unparseable settings file silently,
   and overwriting it would hide that.
+- The conventions are one file, `conventions/AGENTS.md`, linked under whatever
+  name each agent reads: `~/.claude/CLAUDE.md` for Claude, `~/.codex/AGENTS.md`
+  for Codex. Not in `home/`, because `home/` maps a path to the same path and
+  these targets differ. **Do not** link it to `~/.claude/AGENTS.md`: the
+  AGENTS.md candidates Claude Code compiles in are project-scope, it calls
+  `~/.claude/CLAUDE.md` "your user-level memory file", and it ships a Codex
+  importer that copies a user `AGENTS.md` *to* `CLAUDE.md` — which would be
+  pointless if it read the former. Linking under the name Claude already reads
+  does not depend on that inference.
+- Agent directories are linked into only when they already exist, so nothing
+  creates config for a tool that is not set up. Omarchy seeds `~/.codex` with
+  the same skills it puts in `~/.claude`, so it is present before the CLI is.
 - The skill lives in `skills/`, not `home/`, and `module.sh` links the whole
   directory with `link_home`. That matches Omarchy (`~/.claude/skills/omarchy`
   is one link to a directory of `SKILL.md` plus topic files) and means a
