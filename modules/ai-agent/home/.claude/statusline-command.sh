@@ -14,7 +14,8 @@ home="$HOME"
 display_dir="${cwd/#$home/\~}"
 
 # --- Git branch ---
-# Read from workspace repo info; fall back to running git in the cwd.
+# Asked of git in the cwd. Claude's JSON carries no branch, so there is nothing
+# cheaper to consult first.
 branch=""
 # `rev-parse --is-inside-work-tree` exits 0 even in a bare repo (it just prints
 # "false"), so we must test the output rather than the exit code. Otherwise the
@@ -28,7 +29,10 @@ fi
 git_status=""
 if [ -n "$branch" ]; then
   staged=$(git -C "$cwd" --no-optional-locks diff --cached --name-only 2>/dev/null | wc -l | tr -d ' ')
-  dirty=$(git -C "$cwd" --no-optional-locks status --porcelain 2>/dev/null | grep -v '^[MADRCU][MADRCU ] ' | wc -l | tr -d ' ')
+  # Second column only. Excluding every line whose FIRST column was a change
+  # also excluded MM and AM — staged, then edited again — so a file with
+  # unstaged work showed +1 and no !. Untracked (??) still counts as dirty.
+  dirty=$(git -C "$cwd" --no-optional-locks status --porcelain 2>/dev/null | grep -c '^.[^ ]')
   ahead=$(git -C "$cwd" --no-optional-locks rev-list --count @{u}..HEAD 2>/dev/null || echo 0)
   behind=$(git -C "$cwd" --no-optional-locks rev-list --count HEAD..@{u} 2>/dev/null || echo 0)
 
@@ -56,8 +60,8 @@ used_pct=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 session_pct=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
 
 # --- Assemble the line ---
-# Format: <dir> <branch> <git_status>  |  <model>  ctx:<used>%
-parts=""
+# Format: <dir> <branch> <git_status>  <model>  ctx:<n>%  sess:<n>%
+# Every field after the directory is omitted when its source is absent.
 
 printf '\033[34m%s\033[0m' "$display_dir"
 
