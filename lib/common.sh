@@ -106,7 +106,7 @@ link_home() {
 # Compared unprivileged: everything installed here ends up world-readable, and
 # --dry-run deliberately holds no sudo session.
 copy_system() {
-  local src=$1 dest=$2 mode=$3 bak
+  local src=$1 dest=$2 mode=$3 bak n=0
   if [[ -r $dest ]] && cmp -s -- "$src" "$dest"; then
     ok "$dest"
     return
@@ -124,7 +124,18 @@ copy_system() {
   fi
   if [[ -e $dest ]]; then
     bak="$dest.bak.$(date +%s)"
-    sudo cp -a -- "$dest" "$bak" && note "backup: $bak"
+    # Same reasoning as back_up(), which cannot be reused here because the file
+    # is root-owned and the copy needs sudo: reusing a name within one second
+    # would overwrite the backup holding the original with one holding our edit.
+    while [[ -e $bak ]]; do bak="$dest.bak.$(date +%s).$((++n))"; done
+    # And only replace it once that backup exists. This is /etc and
+    # /usr/local — the file about to go may be the only copy of a working
+    # config, and a failed cp used to skip the note and overwrite anyway.
+    if ! sudo cp -a -- "$dest" "$bak"; then
+      fail "could not back up $dest — leaving it alone"
+      return 1
+    fi
+    note "backup: $bak"
   fi
   sudo install -Dm "$mode" -o root -g root -- "$src" "$dest" &&
     changed "$dest" || fail "could not install $dest"
@@ -265,7 +276,14 @@ append_once() {
     return 0
   fi
   if dry; then changed "would append to $f"; return 0; fi
-  printf '%s\n' "$block" >>"$f" && changed "$f (appended)"
+  # Reported, not just returned: a silent failure here leaves the file unwired
+  # while the run still says it is up to date — insert_once already says so.
+  if printf '%s\n' "$block" >>"$f"; then
+    changed "$f (appended)"
+  else
+    fail "could not append to $f"
+    return 1
+  fi
 }
 
 # insert_once FILE MARKER ANCHOR BLOCK — idempotent insert BEFORE the first
