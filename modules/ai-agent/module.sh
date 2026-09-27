@@ -20,10 +20,20 @@ else
   fail "omarchy-mise-install claude failed"
 fi
 
-# ~/.claude/CLAUDE.md, the status line, and the skills tree. link_tree symlinks
-# each file individually, so ~/.claude/skills keeps the entries Omarchy and
-# claude.ai put there — only our own subdirectory is ours.
+# ~/.claude/CLAUDE.md and the status line. link_tree symlinks each file
+# individually, so ~/.claude keeps everything Claude Code owns there — its
+# credentials, projects and state are untouched.
 link_tree "$MODULE_DIR/home"
+
+# The skill is linked as a whole directory, not file by file, matching how
+# Omarchy links its own (~/.claude/skills/omarchy is one link to a directory of
+# SKILL.md plus topic files). A skill grows supporting files, and a directory
+# link picks them up — and drops the ones deleted from the repo — with no
+# re-install. File-level links would leave a dangling entry behind instead.
+#
+# Only this subdirectory: ~/.claude/skills itself must stay a real directory,
+# since Omarchy and claude.ai put their own entries in it.
+link_home "$MODULE_DIR/skills/git-conventions" "$HOME/.claude/skills/git-conventions"
 
 # --- settings.json ------------------------------------------------------------
 

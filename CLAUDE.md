@@ -81,6 +81,12 @@ is missing instead of failing.
   writes its own state there. A file that is already invalid JSON is reported,
   not rewritten — Claude Code ignores an unparseable settings file silently,
   and overwriting it would hide that.
+- The skill lives in `skills/`, not `home/`, and `module.sh` links the whole
+  directory with `link_home`. That matches Omarchy (`~/.claude/skills/omarchy`
+  is one link to a directory of `SKILL.md` plus topic files) and means a
+  supporting file added to the repo is live without re-running `install`, while
+  a deleted one leaves no dangling link. Never link `~/.claude/skills` itself:
+  Omarchy and claude.ai put their own entries there.
 - The split between `CLAUDE.md` and the `git-conventions` skill is deliberate.
   A skill only loads when the model matches its description, so anything that
   must hold on every turn — no AI attribution, GPG signing — stays in

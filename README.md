@@ -48,6 +48,7 @@ Every mechanism here leaves Omarchy's own files intact:
 | --- | --- | --- |
 | `modules/*/home/` | **symlinked** into `$HOME` | editing the live file edits the repo — no sync step, nothing to forget |
 | `modules/*/system/` | **copied** to `/` as root | this repo is user-writable; root must not read policy, or run sudo'd scripts, from a path you can rewrite |
+| a directory a tool owns | **symlinked whole**, by an explicit `link_home` | a skill or plugin directory is a unit: new files appear and deleted ones vanish with no re-install |
 
 That second row is a security boundary, not a style choice. A symlinked
 `/usr/local/bin/hibernation-check` would mean `sudo hibernation-check` executes

@@ -75,12 +75,25 @@ link_home() {
   fi
   mkdir -p -- "$(dirname -- "$dest")"
   if [[ -e $dest && ! -L $dest ]]; then
-    bak=$(back_up "$dest")
-    # An identical file needs no backup kept; the symlink supersedes it anyway.
-    [[ -n $bak ]] && cmp -s -- "$bak" "$src" && rm -f -- "$bak"
+    bak=$(back_up "$dest") || { fail "could not back up $dest"; return 1; }
+    # Identical content needs no backup kept; the symlink supersedes it anyway.
+    # A directory is compared recursively: cmp only reads files and would call
+    # every directory different, keeping a backup of something unchanged.
+    if [[ -n $bak ]]; then
+      if [[ -d $dest ]]; then diff -rq -- "$bak" "$src" >/dev/null 2>&1 && rm -rf -- "$bak"
+      else cmp -s -- "$bak" "$src" && rm -f -- "$bak"
+      fi
+    fi
     [[ -n $bak && -e $bak ]] && note "backup: $bak"
+    # -r, because a directory is a legitimate destination here (a skill
+    # directory linked as one unit, the way Omarchy links its own). Plain
+    # rm -f fails on a directory *silently*, and ln -s then creates the link
+    # INSIDE it — dest/name/name — while this still reports success.
+    # Only ever reached with a backup in hand.
+    rm -rf -- "$dest"
+  else
+    rm -f -- "$dest"
   fi
-  rm -f -- "$dest"
   ln -s -- "$src" "$dest" && changed "$dest -> $src" || fail "could not link $dest"
 }
 
