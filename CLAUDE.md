@@ -108,11 +108,13 @@ is missing instead of failing.
   supporting file added to the repo is live without re-running `install`, while
   a deleted one leaves no dangling link. Never link `~/.claude/skills` itself:
   Omarchy and claude.ai put their own entries there.
-- The split between `CLAUDE.md` and the `git-conventions` skill is deliberate.
-  A skill only loads when the model matches its description, so anything that
-  must hold on every turn — no AI attribution, GPG signing — stays in
-  `CLAUDE.md`. `attribution` in `settings.json` enforces the first of those in
-  the harness, where no instruction can outrank it.
+- The split between `conventions/AGENTS.md` and the `git-conventions` skill is
+  deliberate. A skill only loads when the model matches its description, and an
+  agent may have no skill mechanism at all, so anything that must hold on every
+  turn — no AI attribution, GPG signing — stays in the conventions file.
+  `attribution` in `settings.json` enforces the first of those in the harness,
+  where no instruction can outrank it, but only for Claude: that is why the
+  rule is stated in both places rather than moved.
 
 ## Git module specifics
 

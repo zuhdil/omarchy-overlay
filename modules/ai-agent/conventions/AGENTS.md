@@ -4,14 +4,16 @@ These guidelines apply globally across all my projects, whichever agent
 is running. Project-specific instruction files may extend or override
 them where appropriate.
 
-This is the single source of truth. It reaches each agent under the name
-that agent reads: Claude sees it as `~/.claude/CLAUDE.md`, Codex as
-`~/.codex/AGENTS.md`. Edit it here; the links do the rest.
+This is the single source of truth, and you are reading a symlink to it.
+It lives at `modules/ai-agent/conventions/AGENTS.md` in the
+omarchy-overlay repo, and `./install ai-agent` surfaces it under
+whatever name each agent in use reads — `~/.claude/CLAUDE.md` for
+Claude. Edit the file in the repo; the links do the rest.
 
 The detailed commit-message style lives in the `git-conventions` skill,
-which Claude loads on demand. What is below stays here because it must
-apply on every turn, whether or not that skill was loaded — and because
-an agent with no skill mechanism still reads this file.
+loaded on demand by agents that have a skill mechanism. What is below
+stays here because it must apply on every turn, whether or not that
+skill was loaded — and because an agent without skills reads only this.
 
 ## Attribution
 

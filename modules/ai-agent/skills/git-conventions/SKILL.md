@@ -6,8 +6,10 @@ description: Commit message style and git hygiene for this user's repositories. 
 # Git conventions
 
 These are style rules. The non-negotiables — no AI attribution anywhere, GPG
-signing, writing the message through `.tmp-commit-msg` — live in `~/.claude/CLAUDE.md`
-and apply whether or not this skill loaded. Nothing here relaxes them.
+signing, writing the message through `.tmp-commit-msg` — live in the global
+conventions file your agent loads at startup (`~/.claude/CLAUDE.md` for Claude;
+`AGENTS.md` in the overlay repo) and apply whether or not this skill loaded.
+Nothing here relaxes them.
 
 ## Length
 

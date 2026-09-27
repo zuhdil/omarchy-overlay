@@ -89,10 +89,11 @@ AGENTS
 # leave the rest alone — replacing it would discard machine-local state that was
 # never ours.
 #
-# attribution is here rather than in CLAUDE.md on purpose. CLAUDE.md asks the
-# model not to add "Co-Authored-By" and "Generated with Claude Code"; this makes
-# the harness not offer them at all, so the rule holds even on a turn where the
-# instruction is outranked or missing.
+# attribution is here rather than in the conventions file on purpose. That file
+# asks the model not to add "Co-Authored-By" and "Generated with Claude Code";
+# this makes the harness not offer them at all, so the rule holds even on a
+# turn where the instruction is outranked or missing. Claude-only, though — no
+# other agent reads this file, which is why the rule stays in both places.
 settings=$HOME/.claude/settings.json
 
 if ! command -v jq >/dev/null; then
