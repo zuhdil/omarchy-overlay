@@ -64,9 +64,11 @@ fi
 
 git_set commit.gpgsign true
 git_set tag.gpgsign true
-# Signing needs a terminal to prompt on where pinentry has no GUI to use. That
-# is `GPG_TTY`, set by the shell module's rc.sh — interactive-only, since
-# `$(tty)` means nothing without a terminal.
+# Signing needs a terminal to prompt on wherever pinentry has no GUI, which is
+# what `GPG_TTY` names. Two places set it, for two different moments: rc.sh for
+# every interactive shell afterwards, and the key generation below for the run
+# happening now — the shell module sorts after this one, so its line has not
+# been written yet, and would not reach an already-running shell if it had.
 
 # ask_identity KEY LABEL [REGEX] — prompt for a git identity field and set it.
 # Only called with a terminal present.
@@ -176,10 +178,17 @@ else
         /^sec:/ { usable = ($2 !~ /^[erdi]$/) && ($12 ~ /S/); next }
         /^fpr:/ && usable { print $10; exit }
       ')
-      [[ -n $fpr ]] && changed "generated GPG key ${fpr: -16}" ||
+      if [[ -n $fpr ]]; then
+        changed "generated GPG key ${fpr: -16}"
+      else
         fail "key generated but no usable signing key found afterwards"
+        note "signing is enabled, so commits will fail until one exists"
+      fi
     else
       fail "gpg key generation failed"
+      # Same state as the no-terminal branch above, and more surprising because
+      # it was attempted: say so rather than leave git quietly unusable.
+      note "signing is enabled, so commits will fail until a key exists"
     fi
   fi
   [[ -n ${fpr:-} ]] && git_set user.signingkey "$fpr"
