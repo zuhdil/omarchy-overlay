@@ -37,13 +37,6 @@ link_tree "$MODULE_DIR/home"
 # the harness not offer them at all, so the rule holds even on a turn where the
 # instruction is outranked or missing.
 settings=$HOME/.claude/settings.json
-# An absolute path, not ~/...: settings.json is machine-local and never
-# committed, so a portable spelling buys nothing, and whether the harness runs
-# this through a shell that would expand the tilde is not documented.
-want=$(jq -n --arg cmd "$HOME/.claude/statusline-command.sh" '{
-  statusLine: { type: "command", command: $cmd },
-  attribution: { commit: "", pr: "", sessionUrl: false }
-}')
 
 if ! command -v jq >/dev/null; then
   skip "jq not installed — cannot merge $settings"
@@ -54,6 +47,17 @@ elif [[ -e $settings ]] && ! jq -e 'type == "object"' "$settings" >/dev/null 2>&
   # cannot be multiplied, which would leave the merge below empty.
   fail "$settings is not a JSON object — leaving it alone"
 else
+  # Built here, below the guard: this calls jq, and doing it above printed a
+  # raw "jq: command not found" ahead of the skip on a machine without it.
+  #
+  # An absolute path, not ~/...: settings.json is machine-local and never
+  # committed, so a portable spelling buys nothing, and whether the harness
+  # runs this through a shell that would expand the tilde is not documented.
+  want=$(jq -n --arg cmd "$HOME/.claude/statusline-command.sh" '{
+    statusLine: { type: "command", command: $cmd },
+    attribution: { commit: "", pr: "", sessionUrl: false }
+  }')
+
   if [[ -e $settings ]]; then
     merged=$(jq --argjson want "$want" '. * $want' "$settings") || merged=""
     current=$(jq -S . "$settings")

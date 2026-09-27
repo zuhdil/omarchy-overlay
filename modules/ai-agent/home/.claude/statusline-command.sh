@@ -5,8 +5,13 @@
 # --- Read Claude's JSON, once ---
 #
 # One jq pass rather than one per field. This runs on every status line
-# refresh, and starting the interpreter costs far more than the parse: four
-# calls measured ~6 ms of a ~30 ms render, the rest being git.
+# refresh, and starting an interpreter costs far more than the parse: going
+# from four calls to one took a render from 29 ms to 18 ms, the rest being the
+# four git invocations below.
+#
+# session_pct is the subscription quota shown by /usage, distinct from the
+# context window. rate_limits only appears for Claude.ai Pro/Max subscribers
+# after the first API response, so it may legitimately be absent.
 #
 # @tsv rather than raw newlines, because it escapes any tab or newline inside a
 # value — a directory may legally contain either, and a raw split would then
@@ -64,10 +69,6 @@ if [ -n "$branch" ]; then
     git_status="${git_status}⇣${behind}"
   fi
 fi
-
-# `session_pct` is the subscription quota shown by /usage, distinct from the
-# context window. The rate_limits object only appears for Claude.ai Pro/Max
-# subscribers after the first API response, so it may legitimately be empty.
 
 # --- Assemble the line ---
 # Format: <dir> <branch> <git_status>  <model>  ctx:<n>%  sess:<n>%
