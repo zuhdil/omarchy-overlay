@@ -90,9 +90,18 @@ is missing instead of failing.
   importer that copies a user `AGENTS.md` *to* `CLAUDE.md` — which would be
   pointless if it read the former. Linking under the name Claude already reads
   does not depend on that inference.
-- Agent directories are linked into only when they already exist, so nothing
-  creates config for a tool that is not set up. Omarchy seeds `~/.codex` with
-  the same skills it puts in `~/.claude`, so it is present before the CLI is.
+- An agent is linked into only when it is actually in use, which is neither of
+  the two obvious tests. Its config directory existing proves nothing: Omarchy
+  seeds `~/.agents`, `~/.claude`, `~/.codex` and `~/.pi/agent` with its own
+  skills on every install. Its CLI being on `PATH` proves little more:
+  `install/user/mise.sh` runs `omarchy-mise-install` for every agent Omarchy
+  ships — codex, crush, gemini, opencode, pi, grok, cursor-agent — and each
+  writes a wrapper that downloads on first use. `agent_in_use` therefore
+  requires a mise-backed CLI to have an install directory, which mise creates
+  only after a real run.
+- Add an agent as a row in that table only once its user-level instruction path
+  is confirmed. A guessed path leaves a file no agent reads — the clutter the
+  in-use test exists to prevent.
 - The skill lives in `skills/`, not `home/`, and `module.sh` links the whole
   directory with `link_home`. That matches Omarchy (`~/.claude/skills/omarchy`
   is one link to a directory of `SKILL.md` plus topic files) and means a

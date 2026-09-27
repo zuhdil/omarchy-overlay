@@ -27,44 +27,51 @@ link_tree "$MODULE_DIR/home"
 
 # --- conventions -------------------------------------------------------------
 
-# One file, linked under whatever name each agent insists on. It is named
-# AGENTS.md because that is the cross-agent spelling; it is not in home/,
-# because home/ maps a path to the same path and these targets differ.
-#
-# Claude reads it as ~/.claude/CLAUDE.md. Not as ~/.claude/AGENTS.md: the
-# AGENTS.md candidates ("AGENTS.md", ".claude/AGENTS.md") are project-scope,
-# Claude Code calls ~/.claude/CLAUDE.md "your user-level memory file", and it
-# ships a Codex importer that copies a user AGENTS.md *to* CLAUDE.md — which
-# would be pointless if it read the former. Linking under the name Claude
-# already reads does not depend on that reading being right.
+# One file, linked under whatever name each agent reads. Named AGENTS.md for
+# the cross-agent spelling; kept out of home/, because home/ maps a path to the
+# same path and these targets differ.
 conventions=$MODULE_DIR/conventions/AGENTS.md
-link_home "$conventions" "$HOME/.claude/CLAUDE.md"
 
-# Other agents, each under its own user-level name, and only where the config
-# directory already exists — so this never creates one for a tool that is not
-# set up. Omarchy seeds ~/.codex with the same skills it puts in ~/.claude, so
-# the directory is present before the CLI is, which is the point: the
-# conventions are in place for the day codex is installed.
-if [[ -d $HOME/.codex ]]; then
-  link_home "$conventions" "$HOME/.codex/AGENTS.md"
-else
-  skip "no ~/.codex — nothing to link conventions into"
-fi
-
-# The skill is linked as a whole directory, not file by file, matching how
-# Omarchy links its own (~/.claude/skills/omarchy is one link to a directory of
-# SKILL.md plus topic files). A skill grows supporting files, and a directory
-# link picks them up — and drops the ones deleted from the repo — with no
-# re-install. File-level links would leave a dangling entry behind instead.
+# Whether an agent is actually in use on this machine.
 #
-# Only this subdirectory: ~/.claude/skills itself must stay a real directory,
-# since Omarchy and claude.ai put their own entries in it.
-# Into every agent's skills directory that exists, for the same reason the
-# conventions go to each of them.
-for _dir in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
-  [[ -d $_dir ]] && link_home "$MODULE_DIR/skills/git-conventions" "$_dir/git-conventions"
-done
-unset _dir
+# Not "does its config directory exist": Omarchy seeds ~/.agents, ~/.claude,
+# ~/.codex and ~/.pi/agent with its own skills on every install, so those
+# directories say nothing. And not "is the CLI on PATH" alone: Omarchy's
+# install/user/mise.sh runs omarchy-mise-install for every agent it ships —
+# codex, crush, gemini, opencode, pi, grok, cursor-agent — and each writes a
+# wrapper that downloads the tool on first use. A wrapper means offered, not
+# used. mise creates an install directory only once the tool has really run.
+agent_in_use() {
+  local cli=$1 wrapper
+  wrapper=$(command -v "$cli" 2>/dev/null) || return 1
+  if grep -qs 'mise x' -- "$wrapper"; then
+    [[ -d $HOME/.local/share/mise/installs/$cli ]]
+  else
+    return 0   # installed some other way; being on PATH is the evidence
+  fi
+}
+
+# cli, user-level instruction file, skills directory — all relative to $HOME.
+#
+# Only agents whose instruction path is known. Claude's is confirmed; Codex's
+# is corroborated by Claude Code's own Codex importer, which reads AGENTS.md
+# from the codex home. Omarchy also ships pi, gemini, crush, opencode and
+# others, and seeds ~/.pi/agent/skills — but their user-level instruction
+# filenames are not established here. Add a row once the path is confirmed;
+# guessing one leaves a file no agent reads, which is the clutter this avoids.
+while read -r cli instructions skills; do
+  [[ -n $cli ]] || continue
+  if ! agent_in_use "$cli"; then
+    skip "$cli is not in use — conventions not linked"
+    continue
+  fi
+  link_home "$conventions" "$HOME/$instructions"
+  [[ -n $skills && -d $HOME/$skills ]] &&
+    link_home "$MODULE_DIR/skills/git-conventions" "$HOME/$skills/git-conventions"
+done <<'AGENTS'
+claude .claude/CLAUDE.md .claude/skills
+codex  .codex/AGENTS.md  .codex/skills
+AGENTS
 
 # --- settings.json ------------------------------------------------------------
 
