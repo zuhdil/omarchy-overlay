@@ -32,6 +32,13 @@ link_tree "$MODULE_DIR/home"
 # same path and these targets differ.
 conventions=$MODULE_DIR/conventions/AGENTS.md
 
+# The agent this module installs, and so uses by declaration. It is exempt from
+# the in-use test below, which would otherwise be wrong on exactly the machine
+# this repo exists for: on a fresh install the block above has written the
+# wrapper, nothing has run it yet, mise holds nothing, and the conventions —
+# the whole point of carrying the repo to another PC — would be skipped.
+managed_agent=claude
+
 # Whether an agent is actually in use on this machine.
 #
 # Not "does its config directory exist": Omarchy seeds ~/.agents, ~/.claude,
@@ -65,7 +72,7 @@ agent_in_use() {
 # guessing one leaves a file no agent reads, which is the clutter this avoids.
 while read -r cli instructions skills; do
   [[ -n $cli ]] || continue
-  if ! agent_in_use "$cli"; then
+  if [[ $cli != "$managed_agent" ]] && ! agent_in_use "$cli"; then
     skip "$cli is not in use — conventions not linked"
     continue
   fi
