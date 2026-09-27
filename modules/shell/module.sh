@@ -42,17 +42,23 @@ repoint_stale() {
     note "the original is at $bak"
   fi
 }
-repoint_stale 'omarchy-overlay/modules/shell/env.sh' "$MODULE_DIR/env.sh"
-repoint_stale 'omarchy-overlay/modules/shell/rc.sh' "$MODULE_DIR/rc.sh"
+# The tail carries no repo directory name. It used to read
+# "omarchy-overlay/modules/shell/env.sh", which matches only a clone named
+# omarchy-overlay — and the README says clone it anywhere. Under any other name
+# nothing matched, so insert_once and append_once appended a fresh pair of
+# source lines on every run. "modules/shell/env.sh" is still unique enough in a
+# ~/.bashrc and survives both a rename and a move.
+repoint_stale 'modules/shell/env.sh' "$MODULE_DIR/env.sh"
+repoint_stale 'modules/shell/rc.sh' "$MODULE_DIR/rc.sh"
 
-insert_once "$HOME/.bashrc" 'omarchy-overlay/modules/shell/env.sh' \
+insert_once "$HOME/.bashrc" 'modules/shell/env.sh' \
   '[[ $- != *i* ]] && return' \
   "
 # omarchy-overlay environment — above the interactive guard on purpose, so scripts and
 # editor tasks see it too, not just interactive shells.
 [[ -r $MODULE_DIR/env.sh ]] && source $MODULE_DIR/env.sh"
 
-append_once "$HOME/.bashrc" 'omarchy-overlay/modules/shell/rc.sh' "
+append_once "$HOME/.bashrc" 'modules/shell/rc.sh' "
 # omarchy-overlay interactive shell config (this file stays machine-local).
 [[ -r $MODULE_DIR/rc.sh ]] && source $MODULE_DIR/rc.sh"
 

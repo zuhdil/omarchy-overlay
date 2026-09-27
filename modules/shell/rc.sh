@@ -11,7 +11,12 @@
 # and signing otherwise fails with "Inappropriate ioctl for device".
 #
 # Here rather than in env.sh because `$(tty)` is meaningless to a shell that has
-# no terminal, and here rather than in the git module because it governs every
-# gpg passphrase prompt, not just commit signing. The git module is what makes
-# it matter, by enabling commit.gpgsign.
-export GPG_TTY=$(tty)
+# no terminal. The git module exports it too, but only for the length of its own
+# run, where it generates a key before this file exists; this is what every
+# later shell gets. It governs every gpg passphrase prompt, not just commit
+# signing — the git module is merely what makes it matter, by enabling
+# commit.gpgsign.
+#
+# Guarded: with stdin redirected `tty` prints the literal "not a tty" and exits
+# 1, and exporting that hands gpg-agent a path it cannot open.
+[[ -t 0 ]] && export GPG_TTY=$(tty)
