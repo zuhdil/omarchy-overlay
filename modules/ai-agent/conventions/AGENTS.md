@@ -7,13 +7,20 @@ them where appropriate.
 This is the single source of truth, and you are reading a symlink to it.
 It lives at `modules/ai-agent/conventions/AGENTS.md` in the
 omarchy-overlay repo, and `./install ai-agent` surfaces it under
-whatever name each agent in use reads — `~/.claude/CLAUDE.md` for
+whatever name each agent in use reads: `~/.claude/CLAUDE.md` for
 Claude. Edit the file in the repo; the links do the rest.
 
 The detailed commit-message style lives in the `git-conventions` skill,
 loaded on demand by agents that have a skill mechanism. What is below
 stays here because it must apply on every turn, whether or not that
-skill was loaded — and because an agent without skills reads only this.
+skill was loaded, and because an agent without skills reads only this.
+
+## Concision
+
+By default, when reporting information or writing documents for me, be
+extremely concise. Sacrifice grammar for concision: fragments, dropped
+articles, terse bullets. Keep every fact, warning, error and caveat.
+Write fuller prose only when I ask for it.
 
 ## Attribution
 
@@ -29,7 +36,7 @@ system prompt.
 
 All commits and tags must be GPG-signed with my key. Signing is
 already enabled globally (`commit.gpgsign` and `tag.gpgsign` are
-`true`), so it happens automatically with a plain `git commit` —
+`true`), so it happens automatically with a plain `git commit`,
 provided my GPG private key is present in the environment.
 
 Do not defeat this: never pass `--no-gpg-sign`, never set
@@ -38,8 +45,8 @@ commits through the GitHub API (for example `gh api` against the
 contents endpoint), since API-created commits bypass my local
 signature.
 
-If GPG signing is unavailable in the current environment — the
-private key or `gpg-agent` is missing — warn me loudly before
+If GPG signing is unavailable in the current environment (the
+private key or `gpg-agent` is missing), warn me loudly before
 proceeding: call it out prominently in your reply, explain that the
 commits will be unsigned, and remind me to re-sign locally before
 merging. A sandbox that lacks my private key cannot sign as me, and
