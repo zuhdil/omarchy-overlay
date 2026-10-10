@@ -1,0 +1,49 @@
+#!/bin/bash
+#
+# Move a pane to window N and follow it, like Hyprland's movetoworkspace.
+#
+#   tmux-move-pane N [PANE]   # PANE defaults to the current one
+#
+# Bound to prefix Alt+N in ~/.config/tmux/overlay.conf. A script because the
+# split direction depends on the target pane's size, which a binding cannot
+# read before acting.
+#
+# Splits the target window's active pane the way Hyprland's dwindle layout
+# does: side by side when it is wider than tall, stacked otherwise. Measured in
+# pixels, not cells: a 103x45 pane in 9x21 cells is 927x945, taller than wide.
+# A fixed 2:1 cell ratio guessed wrong there, so it is only the fallback for a
+# terminal that does not report its cell size.
+#
+# A window N that does not exist is created, as Hyprland creates a workspace.
+
+set -uo pipefail
+
+n=${1:?usage: tmux-move-pane N [PANE]}
+src=${2:-$(tmux display -p '#{pane_id}')}
+
+read -r session cur panes < <(tmux display -p -t "$src" \
+  '#{session_id} #{window_index} #{window_panes}')
+
+[[ $cur == "$n" ]] && exit 0
+
+target=$(tmux list-windows -t "$session" -F '#{window_index} #{window_id}' |
+  awk -v n="$n" '$1 == n { print $2 }')
+
+if [[ -z $target ]]; then
+  # break-pane refuses a window's only pane, so move the window instead.
+  if ((panes == 1)); then
+    tmux move-window -s "$src" -t "$session:$n"
+  else
+    tmux break-pane -s "$src" -t "$session:$n"
+  fi
+  exit
+fi
+
+read -r w h < <(tmux display -p -t "$target" '#{pane_width} #{pane_height}')
+read -r cw ch < <(tmux display -p '#{client_cell_width} #{client_cell_height}')
+((cw > 0 && ch > 0)) || { cw=1 ch=2; }
+((w * cw > h * ch)) && split=-h || split=-v
+
+# By window id, not index: with renumber-windows on, moving a window's last
+# pane closes it and shifts every index after it.
+tmux join-pane "$split" -s "$src" -t "$target" && tmux select-window -t "$target"
