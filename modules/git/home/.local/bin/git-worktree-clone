@@ -1,0 +1,79 @@
+#!/bin/bash
+#
+# Clone a repository for working in worktrees: a bare repository plus one
+# worktree for the default branch, side by side in one directory.
+#
+#   git worktree-clone <url> [dir]  # or `git clone-for-worktree`, via the alias
+#
+#   omarchy-overlay/
+#     .bare/    the repository
+#     .git      a file, `gitdir: ./.bare`, so git works from this directory
+#     master/   the default branch, tracking origin/master
+#
+# Further worktrees go next to it: `git worktree add fix-x origin/master -b fix-x`
+# from the top directory, or `git worktree add some-branch` for a branch that
+# already exists on origin.
+#
+# A bare clone is not ready to work in on its own, so this repairs three things:
+# it has no fetch refspec, so `origin/*` never exists and nothing can track it;
+# it copies every remote branch as a local one that then goes stale; and it
+# records worktree paths as absolute, so moving the directory breaks them.
+
+set -euo pipefail
+
+die() { printf 'git worktree-clone: %s\n' "$1" >&2; exit 1; }
+
+(($# >= 1 && $# <= 2)) || die "usage: git worktree-clone <url> [dir]"
+url=$1
+if (($# == 2)); then
+  dir=$2
+else
+  # Covers host:owner/repo.git, https://host/owner/repo/ and local paths.
+  dir=${url%/}
+  dir=${dir%.git}
+  dir=${dir##*/}
+  dir=${dir##*:}
+fi
+[[ -n $dir ]] || die "cannot derive a directory name from $url"
+[[ -e $dir ]] && die "$dir already exists"
+
+# Remove a half-made clone on any exit short of the end, but only one this
+# run created.
+created=0
+cleanup() { if ((created)); then rm -rf -- "$dir"; fi; }
+trap cleanup EXIT
+
+mkdir -p -- "$dir"
+created=1
+
+git clone --bare -- "$url" "$dir/.bare"
+printf 'gitdir: ./.bare\n' >"$dir/.git"
+
+g() { git -C "$dir" "$@"; }
+
+g config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+g fetch --quiet origin
+g remote set-head origin --auto >/dev/null
+
+default=$(g symbolic-ref --short HEAD) || die "cannot tell the default branch of $url"
+g rev-parse --verify --quiet "refs/heads/$default" >/dev/null ||
+  die "$url has no commits on $default"
+
+# Keep only the default branch. Without stale local copies, `git worktree add
+# <branch>` creates the branch from origin and sets it to track.
+g for-each-ref --format='%(refname:short)' refs/heads |
+  while read -r branch; do
+    [[ $branch == "$default" ]] || g branch --quiet -D -- "$branch"
+  done
+
+# Relative paths keep the directory movable; guessRemote makes the short
+# `git worktree add <branch>` pick up origin/<branch> rather than branch off HEAD.
+g config worktree.useRelativePaths true
+g config worktree.guessRemote true
+# Flat folder names: `feature/x` checks out into `feature-x`, not a nested dir.
+folder=${default//\//-}
+g worktree add --quiet -- "$folder" "$default"
+g -C "$folder" branch --quiet --set-upstream-to="origin/$default"
+
+created=0
+printf 'Ready: %s/%s (tracking origin/%s)\n' "$dir" "$folder" "$default"
