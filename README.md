@@ -84,6 +84,7 @@ REPO=${OMARCHY_OVERLAY_DIR:-$HOME/.config/omarchy-overlay}
 | `ai-agent` | Claude Code installed through mise (Omarchy's own mechanism for self-updating tools), a Starship-shaped status line, and one conventions file linked under whatever name each agent *in use* reads (`~/.claude/CLAUDE.md` for Claude), with the detailed style in a `git-conventions` skill. |
 | `git` | `git lg` (graph) and `git lgs` (signature column) log aliases, `git clone-for-worktree` (bare clone plus a worktree for the default branch, tracking origin) and `git convert-for-worktree` (the same layout from an existing clone, in place), enforced commit and tag signing, and the SSH and GPG keys uploaded to GitHub if they are not there already. |
 | `container-engine` | `toggle-container-engine` switches docker/compose between Podman and Docker. Selecting Podman also sets `DOCKER_BUILDKIT=0`, because Podman's API does not serve BuildKit and builds otherwise hang. |
+| `tmux` | Vim-style `h`/`j`/`k`/`l` pane focus and `H`/`J`/`K`/`L` resize, `\` `-` `|` `_` splits, and `x`/`X`/`C-x` to kill pane/window/session. Lives in its own `overlay.conf`, sourced from the end of Omarchy's `tmux.conf` so its bindings win and Omarchy's migrations keep applying. |
 | `shell` | Shared shell config, split by interactivity and sourced from `~/.bashrc`. `rc.sh` sets `GPG_TTY`, which commit signing needs wherever pinentry has no GUI. |
 
 ## What is never committed
