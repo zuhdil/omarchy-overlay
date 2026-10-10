@@ -1,4 +1,4 @@
-# desc: git log aliases, worktree clone, enforced commit/tag signing, GitHub SSH and GPG keys
+# desc: git log aliases, worktree clone/convert, enforced commit/tag signing, GitHub SSH and GPG keys
 #
 # Omarchy seeds ~/.config/git/config, so this sets individual keys with
 # `git config --global` rather than shipping a file. Replacing it would drop
@@ -36,11 +36,14 @@ git_set alias.lgs "log-signed"
 # alias too.
 git_set pager.log-signed true
 
-# --- worktree clone -----------------------------------------------------------
+# --- worktree layout ----------------------------------------------------------
 
 # `clone-for-worktree` resolves to git-worktree-clone in ~/.local/bin: a bare
 # clone plus a worktree for the default branch, ready to commit and push.
+# `convert-for-worktree` resolves to git-worktree-convert, which turns an
+# existing clone into the same layout in place.
 git_set alias.clone-for-worktree "worktree-clone"
+git_set alias.convert-for-worktree "worktree-convert"
 
 # --- global ignores -----------------------------------------------------------
 

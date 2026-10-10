@@ -82,7 +82,7 @@ REPO=${OMARCHY_OVERLAY_DIR:-$HOME/.config/omarchy-overlay}
 | --- | --- |
 | `hibernation` | Makes hibernate actually resume on this hybrid Intel+NVIDIA laptop, then wires up lid, idle and critical-battery triggers. See its `docs/hibernation.md`. |
 | `ai-agent` | Claude Code installed through mise (Omarchy's own mechanism for self-updating tools), a Starship-shaped status line, and one conventions file linked under whatever name each agent *in use* reads (`~/.claude/CLAUDE.md` for Claude), with the detailed style in a `git-conventions` skill. |
-| `git` | `git lg` (graph) and `git lgs` (signature column) log aliases, `git clone-for-worktree` (bare clone plus a worktree for the default branch, tracking origin), enforced commit and tag signing, and the SSH and GPG keys uploaded to GitHub if they are not there already. |
+| `git` | `git lg` (graph) and `git lgs` (signature column) log aliases, `git clone-for-worktree` (bare clone plus a worktree for the default branch, tracking origin) and `git convert-for-worktree` (the same layout from an existing clone, in place), enforced commit and tag signing, and the SSH and GPG keys uploaded to GitHub if they are not there already. |
 | `container-engine` | `toggle-container-engine` switches docker/compose between Podman and Docker. Selecting Podman also sets `DOCKER_BUILDKIT=0`, because Podman's API does not serve BuildKit and builds otherwise hang. |
 | `shell` | Shared shell config, split by interactivity and sourced from `~/.bashrc`. `rc.sh` sets `GPG_TTY`, which commit signing needs wherever pinentry has no GUI. |
 

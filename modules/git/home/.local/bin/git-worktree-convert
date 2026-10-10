@@ -1,0 +1,110 @@
+#!/bin/bash
+#
+# Convert a regular clone, in place, into the layout git-worktree-clone makes:
+# the repository in .bare and the checked-out branch as a worktree beside it.
+#
+#   git worktree-convert [dir]  # or `git convert-for-worktree`, via the alias
+#
+#   igh-dashboard/              igh-dashboard/
+#     .git/                       .bare/    the repository
+#     src/            ->          .git      a file, `gitdir: ./.bare`
+#     ...                         main/     the branch that was checked out,
+#                                           `/` turned to `-` (feature-x)
+#
+# dir defaults to the repository containing the current directory.
+#
+# The working files are moved, not checked out again, and the index goes with
+# them, so uncommitted, staged, untracked and ignored files all survive.
+# Remotes, upstreams and local branches are left alone: a normal clone already
+# has them right, and local branches may hold work.
+
+set -euo pipefail
+shopt -s dotglob nullglob
+
+die() { printf 'git worktree-convert: %s\n' "$1" >&2; exit 1; }
+
+(($# <= 1)) || die "usage: git worktree-convert [dir]"
+if [[ $(git -C "${1:-.}" rev-parse --is-bare-repository 2>/dev/null) == true ]]; then
+  die "${1:-.} is already a bare repository; nothing to convert"
+fi
+dir=$(git -C "${1:-.}" rev-parse --show-toplevel 2>/dev/null) ||
+  die "${1:-.} is not inside a git repository"
+start=$(pwd -P)
+cd -- "$dir"
+
+# --- checks: refuse before changing anything ----------------------------------
+
+[[ -d .git ]] || die "$dir/.git is not a directory — already a worktree or a submodule"
+[[ -e .bare ]] && die "$dir/.bare already exists"
+
+branch=$(git symbolic-ref --quiet --short HEAD) ||
+  die "HEAD is detached; check out a branch first"
+
+for f in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD BISECT_LOG rebase-merge rebase-apply; do
+  [[ -e .git/$f ]] && die "an operation is in progress (.git/$f); finish or abort it first"
+done
+
+# Linked worktrees point back into .git/worktrees, which is about to move.
+linked=()
+while read -r key path; do
+  [[ $key == worktree && $path != "$dir" ]] && linked+=("$path")
+done < <(git worktree list --porcelain)
+
+# --- convert -------------------------------------------------------------------
+
+# A failure past this point leaves a half-converted directory. Undoing partial
+# moves blindly could lose files, so say where everything is instead.
+tmp=.worktree-convert.$$
+finished=0
+report() {
+  ((finished)) && return
+  printf 'git worktree-convert: stopped part way in %s\n' "$dir" >&2
+  [[ -d $tmp ]] && printf '  working files still in %s/%s\n' "$dir" "$tmp" >&2
+  [[ -d .bare ]] && printf '  repository moved to %s/.bare\n' "$dir" >&2
+  return 0
+}
+trap report EXIT
+
+# Stage through a temporary directory: the branch may share its name with a
+# top-level entry, such as branch `docs` and directory `docs/`.
+mkdir -- "$tmp"
+for e in *; do
+  [[ $e == .git || $e == "$tmp" ]] || mv -- "$e" "$tmp/"
+done
+
+mv .git .bare
+git --git-dir=.bare config core.bare true
+git --git-dir=.bare config --unset core.worktree || true
+printf 'gitdir: ./.bare\n' >.git
+
+# Same as git-worktree-clone: relative paths keep the directory movable, and
+# guessRemote lets `git worktree add <branch>` track origin/<branch>.
+git config worktree.useRelativePaths true
+git config worktree.guessRemote true
+
+# Flat folder names: `feature/x` checks out into `feature-x`, not a nested dir.
+folder=${branch//\//-}
+git worktree add --quiet --no-checkout -- "$folder" "$branch"
+for e in "$tmp"/*; do
+  mv -- "$e" "$folder/"
+done
+rmdir -- "$tmp"
+
+# The old index carries what was staged. Its stat data no longer matches the
+# moved files, so refresh it; a non-zero exit only means files are modified.
+wt_gitdir=$(git -C "$folder" rev-parse --absolute-git-dir)
+[[ -f .bare/index ]] && mv .bare/index "$wt_gitdir/index"
+git -C "$folder" update-index -q --refresh >/dev/null || true
+
+# Repair also rewrites their links as relative, and reports each such rewrite
+# as a "mismatch"; only real problems are worth showing.
+if ((${#linked[@]})); then
+  git worktree repair -- "${linked[@]}" 2>&1 | { grep -v 'path mismatch' || true; } >&2
+fi
+
+finished=1
+printf 'Ready: %s/%s\n' "$dir" "$folder"
+# A shell that was inside the tree now sits in a directory that moved under it.
+if [[ $start == "$dir"/* ]]; then
+  printf 'Your shell is still in the old path; run: cd %s/%s\n' "$dir" "$folder"
+fi
