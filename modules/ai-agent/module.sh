@@ -1,4 +1,4 @@
-# desc: Claude Code via mise, a status line, conventions for every agent in use
+# desc: Claude Code via mise, a status line, plugins, conventions for every agent in use
 
 # Claude ships faster than any distro package can follow, so Omarchy installs it
 # through mise: omarchy-mise-install writes a ~/.local/bin wrapper that pins the
@@ -87,6 +87,49 @@ done <<'AGENTS'
 claude .claude/CLAUDE.md .claude/skills
 codex  .codex/AGENTS.md  .codex/skills
 AGENTS
+
+# --- plugins ------------------------------------------------------------------
+
+# Plugins rather than links into ~/.claude/skills: superpowers and ponytail ship
+# SessionStart hooks that make their skills fire, and a linked skills/ directory
+# would leave those behind. Installed through the CLI, which owns the plugin
+# cache and writes enabledPlugins into settings.json itself.
+#
+# Plugins update from upstream, hooks included: this trusts each author's
+# future commits, not just today's.
+claude_bin=$(command -v claude || echo "$HOME/.local/bin/claude")
+
+if ! [[ -x $claude_bin ]]; then
+  skip "claude not installed — plugins not installed"
+elif ! command -v jq >/dev/null; then
+  skip "jq not installed — cannot read installed plugins"
+else
+  installed=$("$claude_bin" plugin list --json 2>/dev/null | jq -r '.[].id') || installed=""
+  marketplaces=$("$claude_bin" plugin marketplace list --json 2>/dev/null | jq -r '.[].name') || marketplaces=""
+
+  # plugin@marketplace, and the GitHub repo that provides the marketplace.
+  while read -r plugin repo; do
+    [[ -n $plugin ]] || continue
+    marketplace=${plugin#*@}
+    if grep -qxF -- "$plugin" <<<"$installed"; then
+      ok "plugin $plugin"
+    elif dry; then
+      changed "would install plugin $plugin"
+    elif ! grep -qxF -- "$marketplace" <<<"$marketplaces" &&
+         ! "$claude_bin" plugin marketplace add "$repo" >/dev/null; then
+      # Most likely offline. Nothing was installed, so warn rather than fail.
+      warn "could not add marketplace $marketplace ($repo) — $plugin not installed"
+    elif "$claude_bin" plugin install "$plugin" >/dev/null; then
+      changed "plugin $plugin"
+    else
+      warn "could not install plugin $plugin"
+    fi
+  done <<'PLUGINS'
+superpowers@claude-plugins-official anthropics/claude-plugins-official
+ponytail@ponytail                   DietrichGebert/ponytail
+humanizer@humanizer                 blader/humanizer
+PLUGINS
+fi
 
 # --- settings.json ------------------------------------------------------------
 

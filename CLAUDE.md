@@ -124,6 +124,12 @@ is missing instead of failing.
   and neither loads on every turn or reaches Codex. Do not swap them for either,
   and do not fetch them at install time: upstream changes would reach every
   session before being reviewed.
+- Third-party skills (superpowers, ponytail, humanizer) are installed as
+  plugins through `claude plugin`, never linked into `~/.claude/skills`:
+  superpowers and ponytail ship SessionStart hooks that a linked `skills/`
+  would leave behind. The CLI writes `enabledPlugins` itself, so it stays out
+  of the `settings.json` merge. Where their injected rules conflict with
+  `conventions/AGENTS.md`, its "Skills and plugins" section settles it.
 
 ## Git module specifics
 

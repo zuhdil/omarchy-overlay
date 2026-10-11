@@ -84,3 +84,16 @@ be fixed afterwards rather than silently accepted.
 Write git commit messages via a `.tmp-commit-msg` file in the project
 root directory. Use `git commit -F .tmp-commit-msg` and remove the file
 afterwards.
+
+## Skills and plugins
+
+This file outranks any skill or plugin, including what a plugin injects
+at session start. Where they conflict:
+
+- Commits follow this file and the `git-conventions` skill, even inside
+  a plan or skill template: no `git commit -m`, no `feat:`-style
+  prefixes.
+- Invoke a process skill (brainstorming, plans, TDD) when the task
+  warrants it, not on a mere chance that it applies. Trivial tasks skip
+  them.
+- Do not commit generated specs or plans unless I ask.
