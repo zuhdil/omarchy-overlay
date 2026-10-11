@@ -119,6 +119,11 @@ is missing instead of failing.
   `attribution` in `settings.json` enforces the first of those in the harness,
   where no instruction can outrank it, but only for Claude: that is why the
   rule is stated in both places rather than moved.
+- The Karpathy guidelines are written into `conventions/AGENTS.md`, adapted,
+  for the same reason. Upstream ships them as a skill and a Claude-only plugin,
+  and neither loads on every turn or reaches Codex. Do not swap them for either,
+  and do not fetch them at install time: upstream changes would reach every
+  session before being reviewed.
 
 ## Git module specifics
 
