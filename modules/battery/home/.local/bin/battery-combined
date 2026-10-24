@@ -1,0 +1,31 @@
+#!/bin/bash
+# omarchy-battery-status for all batteries combined. It reads only the first
+# BAT device UPower lists; this runs it against UPower's DisplayDevice instead,
+# which weights every battery by capacity, so the output format stays Omarchy's.
+# shortcut: relies on it calling `upower -e` and `upower -i`; if its output goes
+# wrong after an Omarchy update, check how it picks the battery.
+
+shim=$(mktemp -d) || exit 1
+trap 'rm -rf "$shim"' EXIT
+cat >"$shim/upower" <<'SHIM'
+#!/bin/bash
+case $1 in
+  -e) echo /org/freedesktop/UPower/devices/battery_BAT_combined ;;
+  -i) exec /usr/bin/upower -i /org/freedesktop/UPower/devices/DisplayDevice ;;
+  *) exec /usr/bin/upower "$@" ;;
+esac
+SHIM
+chmod +x "$shim/upower"
+PATH=$shim:$PATH omarchy-battery-status "$@" || exit
+
+# --shell also lists each battery, as `battery:<name>` lines the power widget
+# plugin shows per battery; Omarchy's own parser ignores keys it does not use.
+[[ ${1:-} == --shell ]] || exit 0
+for dev in $(upower -e | grep BAT); do
+  upower -i "$dev" | awk '
+    /native-path:/ { name = $2 }
+    /percentage:/ { pct = int($2) "%" }
+    /energy-full:/ { size = sprintf("%dWh", $2) }
+    /charge-cycles:/ && $2 ~ /^[0-9]+$/ { cycles = $2 " cycles" }
+    END { printf "battery:%s\t%s  ·  %s%s\n", name, pct, size, cycles ? "  ·  " cycles : "" }'
+done

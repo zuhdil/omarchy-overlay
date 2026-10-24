@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "overlay.power",
+  "name": "Power (all batteries)",
+  "version": "1.0.0",
+  "author": "omarchy-overlay",
+  "description": "Omarchy's power widget, with battery stats for all batteries combined",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Power (all batteries)",
+    "description": "Omarchy's power widget, with battery stats for all batteries combined",
+    "category": "System",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.power"
+  }
+}
