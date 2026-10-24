@@ -1,0 +1,3 @@
+aur:google-cloud-cli
+# kubectl needs it to authenticate against GKE clusters.
+aur:google-cloud-cli-gke-gcloud-auth-plugin

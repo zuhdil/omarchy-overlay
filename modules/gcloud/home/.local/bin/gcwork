@@ -1,0 +1,4 @@
+#!/bin/bash
+# Switch gcloud to the work account. The active configuration is a file, not
+# shell state, so a script does what an alias would.
+exec gcloud config configurations activate work "$@"

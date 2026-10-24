@@ -1,0 +1,3 @@
+#!/bin/bash
+# Switch gcloud to the personal account, kept in the `default` configuration.
+exec gcloud config configurations activate default "$@"

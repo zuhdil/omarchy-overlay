@@ -1,0 +1,15 @@
+# omarchy-overlay: compile gcloud's 8 MB static completion table. The package
+# ships no .pyc for it and /opt is root-owned, so without this every Tab
+# recompiles it (3.5 s instead of 0.4 s). Python is a target too: a new minor
+# version looks for a new .pyc.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = google-cloud-cli
+Target = python
+
+[Action]
+Description = Compiling gcloud completion table...
+When = PostTransaction
+Exec = /bin/sh -c '[ ! -d /opt/google-cloud-cli/data/cli ] || /usr/bin/python -m compileall -q /opt/google-cloud-cli/data/cli'
