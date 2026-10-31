@@ -7,7 +7,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
-import "file:///usr/share/omarchy/shell/plugins/panels/power" as Omarchy
+import qs.plugins.panels.power as Omarchy
 
 Omarchy.Panel {
   id: power
