@@ -1,0 +1,65 @@
+#!/bin/bash
+# battery-recalibrate <BATn> — re-teach a battery's charge gauge its capacity.
+#
+# The gauge re-learns full capacity only from a complete cycle: empty, then an
+# uninterrupted charge to full. This drains one battery on AC through the
+# kernel's charge_behaviour=force-discharge, so the machine stays powered, and
+# hands it back to the EC to charge. Run it fully charged, with AC plugged in.
+#
+# Copied to /usr/local/bin, root-owned: it re-runs itself as root under
+# systemd-run, so it keeps going if the terminal closes.
+
+set -u
+supplies=/sys/class/power_supply
+
+ac_online() {
+  local s
+  for s in "$supplies"/*; do
+    [[ $(<"$s/type") == Mains && $(<"$s/online") == 1 ]] 2>/dev/null && return 0
+  done
+  return 1
+}
+
+if [[ ${1:-} == --drain ]]; then
+  bat=$2
+  b=$supplies/$bat
+  # A suspend or hibernate would reset charge_behaviour and stall the drain.
+  systemd-inhibit --what=sleep:idle:handle-lid-switch --who=battery-recalibrate \
+    --why="Draining $bat on AC" --mode=block sleep infinity &
+  inhibitor=$!
+  trap 'echo auto >"$b/charge_behaviour"; kill "$inhibitor"; echo "charge_behaviour: $(<"$b/charge_behaviour")"' EXIT
+
+  before=$(<"$b/energy_full")
+  echo "start: $bat $(<"$b/capacity")%, energy_full=$before"
+  echo force-discharge >"$b/charge_behaviour" || exit 1
+  sleep 60
+  while :; do
+    cap=$(<"$b/capacity") st=$(<"$b/status") cb=$(<"$b/charge_behaviour")
+    echo "$bat $cap% $st"
+    ac_online || { echo "AC unplugged — stopped at $cap%"; exit 2; }
+    # The EC drops force-discharge itself once the battery is empty.
+    [[ $cb == *"[force-discharge]"* && $st == Discharging ]] || break
+    sleep 60
+  done
+  echo "done: $bat empty at $cap%, energy_full $before -> $(<"$b/energy_full")"
+  echo "now charge it to 100% without unplugging, then compare $b/energy_full"
+  exit 0
+fi
+
+bat=${1:-}
+if [[ ! $bat =~ ^BAT[0-9]+$ || ! -d $supplies/$bat ]]; then
+  echo "usage: battery-recalibrate <BATn>  (here: $(cd "$supplies" && echo BAT*))" >&2
+  exit 1
+fi
+b=$supplies/$bat
+grep -qs force-discharge "$b/charge_behaviour" ||
+  { echo "$bat does not support force-discharge" >&2; exit 1; }
+ac_online || { echo "plug in AC first: $bat drains while the machine runs on it" >&2; exit 1; }
+(($(<"$b/capacity") >= 95)) ||
+  { echo "charge $bat to full first (now $(<"$b/capacity")%): the gauge learns from a full cycle" >&2; exit 1; }
+
+unit=battery-recalibrate-$bat
+# The installed copy, never the repo's: root must not run a user-writable file.
+sudo systemd-run --unit="$unit" --collect /usr/local/bin/battery-recalibrate --drain "$bat" || exit
+echo "draining $bat; follow with: journalctl -fu $unit"
+echo "stop early with: sudo systemctl stop $unit"

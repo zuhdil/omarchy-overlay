@@ -1,6 +1,7 @@
-# desc: battery-combined, and Omarchy's power widget fed by it so its popup counts every battery
+# desc: battery-combined, Omarchy's power widget fed by it so its popup counts every battery, and battery-recalibrate
 
 link_tree "$MODULE_DIR/home"
+copy_tree "$MODULE_DIR/system"
 # Linked whole, like a skill directory: the shell scans plugins/*/ by directory.
 link_home "$MODULE_DIR/plugin" "$HOME/.config/omarchy/plugins/overlay.power"
 
