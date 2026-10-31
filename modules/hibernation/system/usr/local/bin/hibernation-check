@@ -271,9 +271,17 @@ boot_info=$(as_root '
 boot_img=$(sed -n 1p <<<"$boot_info")
 boot_match=$(sed -n 2p <<<"$boot_info")
 
+# A kernel update replaces the image before the reboot, so from the post-update
+# hook "no match" is the normal state, not a fault. Ask pacman rather than test
+# for the directory: kernel-modules-hook restores the old kernel's modules until
+# the next boot, unowned.
 if [[ -n $boot_img && $boot_match == nomatch ]]; then
-  fail "no boot image matches the running kernel $(uname -r)" \
-    "checking $boot_img instead — the image this machine boots is not being verified"
+  if pacman -Qo "/usr/lib/modules/$(uname -r)" &>/dev/null; then
+    fail "no boot image matches the running kernel $(uname -r)" \
+      "checking $boot_img instead — the image this machine boots is not being verified"
+  else
+    skip "boot image match (kernel $(uname -r) was replaced — reboot pending)"
+  fi
 fi
 
 # Privilege can evaporate between the probe above and here. "I could not look"

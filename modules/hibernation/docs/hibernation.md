@@ -296,7 +296,9 @@ It picks the boot image by matching each UKI's `.uname` against `uname -r`. A
 kernel change can add a UKI under a new name and leave the old one in place, and
 verifying the wrong one would report a healthy image while the one that actually
 boots went unexamined. If nothing matches the running kernel, that is itself a
-failure rather than a silent fallback.
+failure rather than a silent fallback — unless pacman no longer owns that
+kernel's modules directory, which means an update replaced it and the reboot is
+still pending. That is a skip, so the post-update hook stays quiet.
 
 - `NVIDIA is back in the initramfs MODULES` → redo step 1, then step 3
 - `resume hook runs AFTER filesystems` → redo step 2, then step 3
