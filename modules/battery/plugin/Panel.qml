@@ -29,8 +29,21 @@ Omarchy.Panel {
     // them rendering, so the section is appended to the column holding
     // "Battery size" (the left half of the stats row) and spans the full row.
     // Not finding it leaves Omarchy's panel as is.
+    // Omarchy 4.5 builds the popup body on first open (KeyboardPanel.content),
+    // so the search is retried once that content exists.
+    for (var j = 0; j < data.length; j++)
+      if (data[j] && "loadedContent" in data[j]) data[j].loadedContentChanged.connect(addPerBattery)
+    addPerBattery()
+  }
+
+  property bool perBatteryAdded: false
+
+  function addPerBattery() {
+    if (perBatteryAdded) return
     var left = findSizeColumn(power, [])
-    if (left) perBattery.createObject(left, { width: Qt.binding(function() { return left.parent.width }) })
+    if (!left) return
+    perBatteryAdded = true
+    perBattery.createObject(left, { width: Qt.binding(function() { return left.parent.width }) })
   }
 
   function findSizeColumn(o, seen) {
