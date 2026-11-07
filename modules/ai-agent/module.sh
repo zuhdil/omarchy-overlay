@@ -125,9 +125,10 @@ else
       warn "could not install plugin $plugin"
     fi
   done <<'PLUGINS'
-superpowers@claude-plugins-official anthropics/claude-plugins-official
-ponytail@ponytail                   DietrichGebert/ponytail
-humanizer@humanizer                 blader/humanizer
+superpowers@claude-plugins-official       anthropics/claude-plugins-official
+ponytail@ponytail                         DietrichGebert/ponytail
+humanizer@humanizer                       blader/humanizer
+mattpocock-skills@claude-plugins-official anthropics/claude-plugins-official
 PLUGINS
 fi
 
